@@ -18,6 +18,13 @@ data/output/*.xlsx
 
 # OS
 .DS_Store
+
+# Additional ignores
+data/sample_1/*.xlsx
+data/sample_1/*.jpg
+data/output/*
+!data/sample_1/.gitkeep
+!data/output/.gitkeep
 .vscode/
 .idea/
 
