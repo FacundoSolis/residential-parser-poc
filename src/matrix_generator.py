@@ -3,10 +3,9 @@ Matrix Generator - Combines data from all document parsers into Excel output
 """
 
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Font, Alignment
 from pathlib import Path
-from typing import Dict, List, Any
-import re
+from typing import Dict, Any
 
 from src.parsers.contrato_parser import ContratoParser
 from src.parsers.certificado_parser import CertificadoParser
@@ -15,6 +14,7 @@ from src.parsers.declaracion_parser import DeclaracionParser
 from src.parsers.cee_parser import CeeParser
 from src.parsers.registro_parser import RegistroParser
 from src.parsers.dni_parser import DniParser
+from src.parsers.calculo_parser import CalculoParser
 
 
 class MatrixGenerator:
@@ -28,19 +28,7 @@ class MatrixGenerator:
         'CEE': CeeParser,
         'REGISTRO': RegistroParser,
         'DNI': DniParser,
-    }
-    
-    DOCUMENT_COLUMNS = {
-        'CONTRATO': 'C',
-        'FICHA': 'D',
-        'DECLARACION': 'E',
-        'FACTURA': 'F',
-        'INFORME': 'G',
-        'CERTIFICADO': 'H',
-        'CEE': 'I',
-        'REGISTRO': 'J',
-        'DNI': 'K',
-        'CALCULO': 'L',
+        'CALCULO': CalculoParser,
     }
     
     def __init__(self, folder_path: str):
@@ -51,7 +39,7 @@ class MatrixGenerator:
         """Identify document type from filename"""
         filename_upper = filename.upper()
         
-        if 'CONTRATO' in filename_upper:
+        if 'CONTRATO' in filename_upper or 'CONVENIO' in filename_upper:
             return 'CONTRATO'
         elif 'CERTIFICADO' in filename_upper:
             return 'CERTIFICADO'
@@ -65,6 +53,8 @@ class MatrixGenerator:
             return 'REGISTRO'
         elif 'DNI' in filename_upper:
             return 'DNI'
+        elif 'CALCULO' in filename_upper:
+            return 'CALCULO'
         elif 'FICHA' in filename_upper:
             return 'FICHA'
         elif 'FOTOGRAFICO' in filename_upper or 'FOTOGRÁFICO' in filename_upper:
@@ -73,11 +63,11 @@ class MatrixGenerator:
             return 'UNKNOWN'
     
     def parse_all_documents(self):
-        """Parse all PDF documents in folder"""
+        """Parse all documents in folder"""
         print(f"\n📄 Parsing documents from: {self.folder_path}")
         
+        # Parse PDFs
         pdf_files = list(self.folder_path.glob("**/*.pdf"))
-        
         for pdf_file in pdf_files:
             doc_type = self.identify_document_type(pdf_file.name)
             
@@ -98,6 +88,24 @@ class MatrixGenerator:
                 print(f"✓ Parsed {doc_type}: {pdf_file.name}")
             except Exception as e:
                 print(f"✗ Error parsing {pdf_file.name}: {e}")
+        
+        # Parse Excel files
+        xlsx_files = list(self.folder_path.glob("**/*.xlsx"))
+        for xlsx_file in xlsx_files:
+            # Skip output files
+            if 'Checks' in xlsx_file.name or xlsx_file.parent.name == 'output':
+                continue
+                
+            doc_type = self.identify_document_type(xlsx_file.name)
+            
+            if doc_type == 'CALCULO':
+                parser = CalculoParser(str(xlsx_file))
+                try:
+                    data = parser.parse()
+                    self.parsed_data['CALCULO'] = data
+                    print(f"✓ Parsed CALCULO: {xlsx_file.name}")
+                except Exception as e:
+                    print(f"✗ Error parsing {xlsx_file.name}: {e}")
     
     def generate_excel(self, output_path: str, project_name: str = "Project"):
         """Generate Excel file with correspondence matrix"""
@@ -141,6 +149,7 @@ class MatrixGenerator:
         ws[f'E{current_row}'] = self._get_value('DECLARACION', 'homeowner_name')
         ws[f'F{current_row}'] = self._get_value('FACTURA', 'homeowner_name')
         ws[f'K{current_row}'] = self._get_value('DNI', 'name')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'client_name')
         current_row += 1
         
         # DNI
@@ -151,7 +160,7 @@ class MatrixGenerator:
         ws[f'K{current_row}'] = self._get_value('DNI', 'dni_number')
         current_row += 1
         
-        # Address - USE LOCATION FROM CONTRATO IF homeowner_address IS EMPTY
+        # Address
         ws[f'B{current_row}'] = 'Addres'
         homeowner_addr = self._get_value('CONTRATO', 'homeowner_address')
         if not homeowner_addr:
@@ -186,12 +195,14 @@ class MatrixGenerator:
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'act_code')
         ws[f'E{current_row}'] = self._get_value('DECLARACION', 'act_code')
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'act_code')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'act_code')
         current_row += 1
         
         # Energy savings
         ws[f'B{current_row}'] = 'Energy savings (kWh)'
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'energy_savings')
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'energy_savings')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'ae')
         current_row += 1
         
         # Start date
