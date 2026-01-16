@@ -1,33 +1,9 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-*.egg-info/
-
-# Data
-data/sample_1/*.pdf
-data/output/*.xlsx
-*.xlsx
-*.pdf
-*.jpg
-*.png
-
-# OS
+*.pyc
+*.pyo
 .DS_Store
-
-# Additional ignores
-data/sample_1/*.xlsx
-data/sample_1/*.jpg
-data/output/*
-!data/sample_1/.gitkeep
-!data/output/.gitkeep
-.vscode/
-.idea/
-
-# Keep structure
-!data/sample_1/.gitkeep
-!data/output/.gitkeep
+.env
+venv/
+data/output/
+*.zip
+.streamlit/secrets.toml
