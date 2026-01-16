@@ -35,6 +35,7 @@ class ContratoParser(BaseDocumentParser):
             'catastral_ref': self._extract_catastral_ref(),
             'utm_coordinates': self._extract_utm_coordinates(),
             'energy_savings': self._extract_energy_savings(),
+            'act_code': self._extract_act_code(),
         }
         
         return result
@@ -52,41 +53,80 @@ class ContratoParser(BaseDocumentParser):
     
     def _extract_location(self) -> str:
         """Extract location/address of installation"""
-        pattern = r'localidad de\s+(.+?)\s+(?:Castilla y Le[o6]n\s+\d+)'
-        match = re.search(pattern, self.text, re.IGNORECASE)
-        if match:
-            location = match.group(1).strip()
+        # Pattern 1: "1. Dirección: TR PLAZA 4, 24248, URDIALES DEL PARAMO, Castilla y León."
+        pattern1 = r'Direcci[oó]n:\s*(.+?\.)'
+        match1 = re.search(pattern1, self.text, re.IGNORECASE | re.DOTALL)
+        if match1:
+            location = match1.group(1).strip()
+            # Remove trailing period
+            location = location.rstrip('.')
+            # Clean up newlines
+            location = re.sub(r'\s+', ' ', location)
+            return location
+        
+        # Pattern 2: "en TR PLAZA 4 URDIALES DEL PARAMO Castilla y León 24248"
+        pattern2 = r'en\s+([A-Z][A-Z\s\d]+?(?:PLAZA|CALLE|AVENIDA|CARRETERA)[^,\n]*?(?:Castilla y Le[o6]n\s+\d+|,\s*\d{5}))'
+        match2 = re.search(pattern2, self.text, re.IGNORECASE)
+        if match2:
+            location = match2.group(1).strip()
+            location = re.sub(r'\s+', ' ', location)
+            return location
+        
+        # Pattern 3: "localidad de XXX Castilla y León"
+        pattern3 = r'localidad de\s+(.+?)\s+(?:Castilla y Le[o6]n\s+\d+)'
+        match3 = re.search(pattern3, self.text, re.IGNORECASE)
+        if match3:
+            location = match3.group(1).strip()
             postal_match = re.search(r'(Castilla y Le[o6]n\s+(\d+))', self.text, re.IGNORECASE)
             if postal_match:
                 location += ", " + postal_match.group(1).replace('6', 'ó')
             return location
+        
         return "NOT FOUND"
     
     def _extract_catastral_ref(self) -> str:
-        """Extract catastral reference - number appears AFTER 'ubicación' on next line"""
-        # Pattern: "referencia catastral de su ubicación \n 5 720302TN7452S0001 KJ"
-        # The catastral ref is on the line AFTER "ubicación"
+        """Extract catastral reference"""
+        # Pattern 1: "2. Referencia catastral: 2050816TM7925S0001YB"
+        pattern1 = r'Referencia catastral:\s*([0-9A-Z]+)'
+        match1 = re.search(pattern1, self.text, re.IGNORECASE)
+        if match1:
+            catastral = match1.group(1).strip()
+            catastral = re.sub(r'\s+', '', catastral)
+            if re.match(r'^[0-9]+[A-Z]+[0-9]+', catastral):
+                return catastral
         
-        # Find "ubicación" then capture next line with catastral format
-        pattern = r'ubicaci[o6]n\s+([0-9\s]+[A-Z]{2}\s*\d+[A-Z]\d+\s*[A-Z]{2})'
-        match = re.search(pattern, self.text, re.IGNORECASE)
-        if match:
-            catastral = match.group(1).strip()
-            # Remove ALL spaces
+        # Pattern 2: "ubicación \n 5 720302TN7452S0001 KJ"
+        pattern2 = r'ubicaci[o6]n\s+([0-9\s]+[A-Z]{2}\s*\d+[A-Z]\d+\s*[A-Z]{2})'
+        match2 = re.search(pattern2, self.text, re.IGNORECASE)
+        if match2:
+            catastral = match2.group(1).strip()
             catastral = re.sub(r'\s+', '', catastral)
             return catastral
         
         return "NOT FOUND"
     
     def _extract_utm_coordinates(self) -> str:
-        """Extract UTM coordinates"""
-        pattern = r'UTM\s+(\d+),?\s*X:\s*([\d.]+),?\s*Y:\s*([\d.\s]+)'
-        match = re.search(pattern, self.text, re.IGNORECASE)
-        if match:
-            zone = match.group(1)
-            x = match.group(2)
-            y = match.group(3).replace(' ', '')
-            return f"UTM {zone}, X:{x}, Y:{y}"
+        """Extract UTM coordinates - handles both formats"""
+        # Format 1: "UTM 30, X:275624.89, Y:4741864.43"
+        pattern1 = r'UTM\s+(\d+),?\s*X:\s*([\d.]+),?\s*Y:\s*([\d.\s]+)'
+        match1 = re.search(pattern1, self.text, re.IGNORECASE)
+        if match1:
+            zone = match1.group(1)
+            x = match1.group(2)
+            y = match1.group(3).replace(' ', '')
+            return f"X:{x} Y:{y} HUSO:{zone}"
+        
+        # Format 2: "• Coordenadas UTM: o X:271909.54 o Y:4694623.74 o HUSO:30"
+        pattern2 = r'X:\s*([\d.]+)[^Y]*Y:\s*([\d.]+)'
+        match2 = re.search(pattern2, self.text)
+        if match2:
+            x = match2.group(1)
+            y = match2.group(2)
+            # Try to find HUSO/zone
+            zone_match = re.search(r'HUSO[:\s]*(\d+)', self.text, re.IGNORECASE)
+            zone = zone_match.group(1) if zone_match else '30'
+            return f"X:{x} Y:{y} HUSO:{zone}"
+        
         return "NOT FOUND"
     
     def _extract_energy_savings(self) -> str:
@@ -94,15 +134,23 @@ class ContratoParser(BaseDocumentParser):
         pattern = r'([\d.]+)\s*kWh/a[ñnrio]+(?:\s|,|\.)'
         match = re.search(pattern, self.text, re.IGNORECASE)
         if match:
-            return f"{match.group(1)} kWh/año"
+            return f"{match.group(1)}"
+        return "NOT FOUND"
+    
+    def _extract_act_code(self) -> str:
+        """Extract RES code (RES010, RES020)"""
+        match = re.search(r'(RES0*\d{2,3})', self.text, re.IGNORECASE)
+        if match:
+            code = match.group(1).upper()
+            code = re.sub(r'RES0+(\d)', r'RES0\1', code)
+            return code
         return "NOT FOUND"
     
     def _extract_cesionario_company(self) -> str:
-        """Extract Cesionario (company) name - likely in page 1"""
+        """Extract Cesionario (company) name"""
         patterns = [
             r'de una parte[,\s]+(.+?)(?:con CIF|CIF|,\s*con)',
             r'Cesionario[:\s]+(.+?)(?:con CIF|CIF)',
-            r'representada por[:\s]+D[./]?\s*([A-ZÑ\s]+)(?:con DNI)',
         ]
         
         for pattern in patterns:
@@ -113,7 +161,7 @@ class ContratoParser(BaseDocumentParser):
                 if 5 < len(company) < 100:
                     return company
         
-        return "NOT FOUND - Check Page 1"
+        return "NOT FOUND"
     
     def _extract_cesionario_cif(self) -> str:
         """Extract Cesionario CIF"""
@@ -153,12 +201,22 @@ class ContratoParser(BaseDocumentParser):
     
     def _extract_cedente_name(self) -> str:
         """Extract Cedente (homeowner) name"""
+        # Pattern 1: "DE PAZ FRANCO QUINTILIANA, mayor de edad, con DNI"
+        pattern1 = r'([A-ZÑ][A-Z\s]+?),\s*mayor de edad,\s*con DNI'
+        match1 = re.search(pattern1, self.text)
+        if match1:
+            name = match1.group(1).strip()
+            words = name.split()
+            if 2 <= len(words) <= 5:
+                return name
+        
+        # Pattern 2: Look at end of document
         lines = self.text.split('\n')
         for line in reversed(lines[-30:]):
             match = re.match(r'^([A-ZÑ][a-zñ]+\s+[A-ZÑ][a-zñ]+(?:\s+[A-ZÑ][a-zñ]+)?)\s*$', line.strip())
             if match:
                 name = match.group(1)
-                if not re.search(r'CARROCERA|IGLESIA|CASTILLA', name, re.IGNORECASE):
+                if not re.search(r'CARROCERA|IGLESIA|CASTILLA|URDIALES', name, re.IGNORECASE):
                     return name
         
         return "NOT FOUND"
@@ -173,21 +231,29 @@ class ContratoParser(BaseDocumentParser):
         return "NOT FOUND"
     
     def _extract_cedente_address(self) -> str:
-        """Extract Cedente address (same as location)"""
-        return self._extract_location()
+        """Extract Cedente address"""
+        location = self._extract_location()
+        if location != "NOT FOUND":
+            return location
+        
+        return "NOT FOUND"
     
     def _extract_cedente_phone(self) -> str:
         """Extract Cedente phone"""
         patterns = [
-            r'[Tt]el[eé]fono[:\s]*([\d\s-]+)',
+            r'tel[eé]fono[:\s]*([\d\s]+)',
             r'(\+34[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{3})',
-            r'(\d{3}[\s-]\d{3}[\s-]\d{3})',
+            r'(\d{9})',
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, self.text)
+            match = re.search(pattern, self.text, re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                phone = match.group(1).strip()
+                phone = re.sub(r'\s+', '', phone)
+                if len(phone) >= 9:
+                    return phone
+        
         return "NOT FOUND"
     
     def _extract_cedente_email(self) -> str:
