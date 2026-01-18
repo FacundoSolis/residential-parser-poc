@@ -1,11 +1,13 @@
 """
 Matrix Generator - Combines data from all document parsers into Excel output
+IMPROVED: More flexible document detection for various naming conventions
 """
 
 import openpyxl
 from openpyxl.styles import Font, Alignment
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import re
 
 from src.parsers.contrato_parser import ContratoParser
 from src.parsers.certificado_parser import CertificadoParser
@@ -31,81 +33,163 @@ class MatrixGenerator:
         'CALCULO': CalculoParser,
     }
     
+    # Flexible patterns for document identification (checked in order)
+    # Format: list of (pattern, exclude_pattern) tuples
+    DOCUMENT_PATTERNS = {
+        'CONTRATO': [
+            (r'contrato.*cesi[oó]n', None),
+            (r'cesi[oó]n.*ahorro', None),
+            (r'E0?4[-_\s]?1[-_\s]?1', None),  # E4-1-1 or E04-1-1
+            (r'contrato', None),
+            (r'convenio.*cae', None),
+        ],
+        'CEE': [
+            (r'cee.*final', None),
+            (r'E0?4[-_\s]?3[-_\s]?6[-_\s]?1', None),  # E4-3-6-1
+            (r'certificado.*eficiencia', None),
+        ],
+        'REGISTRO': [
+            (r'E0?4[-_\s]?3[-_\s]?6[-_\s]?2', None),  # E4-3-6-2
+            (r'registro', r'cee|final'),  # REGISTRO but not if CEE/FINAL in name
+        ],
+        'CERTIFICADO': [
+            (r'certificado.*instalador', None),
+            (r'E0?4[-_\s]?3[-_\s]?5', None),  # E4-3-5
+            (r'cert.*instalador', None),
+        ],
+        'FACTURA': [
+            (r'factura', None),
+            (r'E0?4[-_\s]?3[-_\s]?3', None),  # E4-3-3
+        ],
+        'DECLARACION': [
+            (r'declaraci[oó]n', None),
+            (r'E0?4[-_\s]?3[-_\s]?2', None),  # E4-3-2
+        ],
+        'DNI': [
+            (r'dni', None),
+            (r'E0?4[-_\s]?4[-_\s]?1', None),  # E4-4-1
+        ],
+        'CALCULO': [
+            (r'calculo', None),
+            (r'c[aá]lculo', None),
+            (r'ui.*rtotal', None),
+            (r'E0?4[-_\s]?4[-_\s]?2', None),  # E4-4-2
+        ],
+        'FICHA': [
+            (r'ficha.*res', None),
+            (r'E0?4[-_\s]?3[-_\s]?1', None),  # E4-3-1
+            (r'ficha', None),
+        ],
+        'INFORME': [
+            (r'informe.*fotogr[aá]fico', None),
+            (r'E0?4[-_\s]?3[-_\s]?4', None),  # E4-3-4
+            (r'fotografico', None),
+        ],
+    }
+    
     def __init__(self, folder_path: str):
         self.folder_path = Path(folder_path)
         self.parsed_data = {}
+        self.file_mapping = {}
         
-    def identify_document_type(self, filename: str) -> str:
-        """Identify document type from filename"""
-        filename_upper = filename.upper()
+    def identify_document_type(self, filepath: Path) -> Optional[str]:
+        """
+        Identify document type using flexible pattern matching.
+        Checks filename AND parent folder name for patterns.
+        """
+        # Combine filename and parent folder for matching
+        filename = filepath.stem
+        parent_name = filepath.parent.name if filepath.parent != self.folder_path else ""
+        search_text = f"{parent_name} {filename}".upper()
         
-        if 'CONTRATO' in filename_upper or 'CONVENIO' in filename_upper:
-            return 'CONTRATO'
-        elif 'CERTIFICADO' in filename_upper:
-            return 'CERTIFICADO'
-        elif 'FACTURA' in filename_upper:
-            return 'FACTURA'
-        elif 'DECLARACION' in filename_upper:
-            return 'DECLARACION'
-        elif 'CEE' in filename_upper and 'FINAL' in filename_upper:
-            return 'CEE'
-        elif 'REGISTRO' in filename_upper:
-            return 'REGISTRO'
-        elif 'DNI' in filename_upper:
-            return 'DNI'
-        elif 'CALCULO' in filename_upper:
-            return 'CALCULO'
-        elif 'FICHA' in filename_upper:
-            return 'FICHA'
-        elif 'FOTOGRAFICO' in filename_upper or 'FOTOGRÁFICO' in filename_upper:
-            return 'INFORME'
-        else:
-            return 'UNKNOWN'
+        # Also check full path for deeply nested structures
+        full_path_text = str(filepath).upper()
+        
+        # Check patterns in priority order
+        # CEE must be checked before REGISTRO to avoid mismatches
+        priority_order = ['CEE', 'CERTIFICADO', 'CONTRATO', 'REGISTRO', 'FACTURA', 
+                         'DECLARACION', 'DNI', 'CALCULO', 'FICHA', 'INFORME']
+        
+        for doc_type in priority_order:
+            patterns = self.DOCUMENT_PATTERNS.get(doc_type, [])
+            for pattern, exclude_pattern in patterns:
+                # Check if pattern matches
+                if re.search(pattern, search_text, re.IGNORECASE) or \
+                   re.search(pattern, full_path_text, re.IGNORECASE):
+                    # Check if exclude pattern also matches (skip if it does)
+                    if exclude_pattern and re.search(exclude_pattern, search_text, re.IGNORECASE):
+                        continue
+                    return doc_type
+        
+        return None
     
     def parse_all_documents(self):
-        """Parse all documents in folder"""
+        """Parse all documents in folder recursively"""
         print(f"\n📄 Parsing documents from: {self.folder_path}")
         
-        # Parse PDFs
-        pdf_files = list(self.folder_path.glob("**/*.pdf"))
-        for pdf_file in pdf_files:
-            doc_type = self.identify_document_type(pdf_file.name)
-            
-            if doc_type == 'UNKNOWN':
-                print(f"⚠️  Skipping unknown document: {pdf_file.name}")
-                continue
-            
-            if doc_type not in self.PARSERS:
-                print(f"⚠️  No parser for: {doc_type} ({pdf_file.name})")
-                continue
-            
-            parser_class = self.PARSERS[doc_type]
-            parser = parser_class(str(pdf_file))
-            
-            try:
-                data = parser.parse()
-                self.parsed_data[doc_type] = data
-                print(f"✓ Parsed {doc_type}: {pdf_file.name}")
-            except Exception as e:
-                print(f"✗ Error parsing {pdf_file.name}: {e}")
+        # Supported extensions
+        supported_extensions = {'.pdf', '.jpg', '.jpeg', '.png'}
+        excel_extensions = {'.xlsx', '.xls'}
         
-        # Parse Excel files
-        xlsx_files = list(self.folder_path.glob("**/*.xlsx"))
-        for xlsx_file in xlsx_files:
-            # Skip output files
-            if 'Checks' in xlsx_file.name or xlsx_file.parent.name == 'output':
+        # Track found documents to avoid duplicates
+        found_docs = {}
+        
+        # Recursively find all files
+        all_files = list(self.folder_path.rglob("*"))
+        
+        # First pass: identify all documents
+        for filepath in all_files:
+            if not filepath.is_file():
                 continue
                 
-            doc_type = self.identify_document_type(xlsx_file.name)
+            ext = filepath.suffix.lower()
             
-            if doc_type == 'CALCULO':
-                parser = CalculoParser(str(xlsx_file))
-                try:
-                    data = parser.parse()
-                    self.parsed_data['CALCULO'] = data
-                    print(f"✓ Parsed CALCULO: {xlsx_file.name}")
-                except Exception as e:
-                    print(f"✗ Error parsing {xlsx_file.name}: {e}")
+            if ext in supported_extensions:
+                doc_type = self.identify_document_type(filepath)
+                if doc_type and doc_type in self.PARSERS:
+                    # If we already found this type, keep the one with more specific name
+                    if doc_type in found_docs:
+                        # Prefer files with the actual keyword in the name
+                        existing = found_docs[doc_type]
+                        if doc_type.lower() in filepath.name.lower() and \
+                           doc_type.lower() not in existing.name.lower():
+                            found_docs[doc_type] = filepath
+                    else:
+                        found_docs[doc_type] = filepath
+                        
+            elif ext in excel_extensions:
+                # Skip output files
+                if 'Checks' in filepath.name or 'output' in str(filepath):
+                    continue
+                doc_type = self.identify_document_type(filepath)
+                if doc_type == 'CALCULO':
+                    found_docs['CALCULO'] = filepath
+        
+        # Second pass: parse found documents
+        print(f"\n📋 Found {len(found_docs)} documents:")
+        for doc_type, filepath in found_docs.items():
+            print(f"   {doc_type}: {filepath.name}")
+        
+        print(f"\n🔍 Parsing...")
+        for doc_type, filepath in found_docs.items():
+            self.file_mapping[doc_type] = filepath
+            
+            if doc_type not in self.PARSERS:
+                continue
+                
+            parser_class = self.PARSERS[doc_type]
+            
+            try:
+                parser = parser_class(str(filepath))
+                data = parser.parse()
+                self.parsed_data[doc_type] = data
+                print(f"   ✓ Parsed {doc_type}")
+            except Exception as e:
+                print(f"   ✗ Error parsing {doc_type}: {e}")
+                self.parsed_data[doc_type] = {
+                    'document_type': doc_type,
+                    'error': str(e)
+                }
     
     def generate_excel(self, output_path: str, project_name: str = "Project"):
         """Generate Excel file with correspondence matrix"""
@@ -242,6 +326,45 @@ class MatrixGenerator:
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'lifespan')
         current_row += 1
         
+        # Surface
+        ws[f'B{current_row}'] = 'Surface (m²)'
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'surface')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'area_afect')
+        current_row += 1
+        
+        # Climatic zone
+        ws[f'B{current_row}'] = 'Climatic zone'
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'zone_climatique')
+        current_row += 1
+        
+        # Invoice info
+        ws[f'B{current_row}'] = 'Invoice number'
+        ws[f'F{current_row}'] = self._get_value('FACTURA', 'invoice_number')
+        current_row += 1
+        
+        ws[f'B{current_row}'] = 'Invoice date'
+        ws[f'F{current_row}'] = self._get_value('FACTURA', 'invoice_date')
+        current_row += 1
+        
+        ws[f'B{current_row}'] = 'Invoice amount'
+        ws[f'F{current_row}'] = self._get_value('FACTURA', 'amount')
+        current_row += 1
+        
+        # Registration info
+        ws[f'B{current_row}'] = 'Registration number'
+        ws[f'J{current_row}'] = self._get_value('REGISTRO', 'registration_number')
+        current_row += 1
+        
+        ws[f'B{current_row}'] = 'Registration date'
+        ws[f'J{current_row}'] = self._get_value('REGISTRO', 'registration_date')
+        current_row += 1
+        
+        # CEE info
+        ws[f'B{current_row}'] = 'Certification date'
+        ws[f'I{current_row}'] = self._get_value('CEE', 'certification_date')
+        current_row += 1
+        
         # Save
         wb.save(output_path)
         print(f"\n✅ Excel generated: {output_path}")
@@ -253,7 +376,7 @@ class MatrixGenerator:
         
         value = self.parsed_data[doc_type].get(field, "")
         
-        if value == "NOT FOUND":
+        if value == "NOT FOUND" or value is None:
             return ""
         
-        return value
+        return str(value)
