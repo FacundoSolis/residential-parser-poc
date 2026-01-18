@@ -1,79 +1,102 @@
 """
-Base parser class for all document types
+Base parser with automatic OCR support for scanned PDFs
 """
-
 import pdfplumber
-import re
-from typing import Dict, Any, Optional
 from pathlib import Path
-from datetime import datetime
+from typing import Optional
+import re
 
 
 class BaseDocumentParser:
-    """Base class for all residential document parsers"""
+    """Base class for document parsers with automatic OCR fallback"""
     
-    def __init__(self, pdf_path: str):
-        self.pdf_path = Path(pdf_path)
+    def __init__(self, file_path: str):
+        self.file_path = Path(file_path)
         self.text = ""
+        self._ocr_available = None
+    
+    def _check_ocr_available(self) -> bool:
+        """Check if OCR dependencies are available"""
+        if self._ocr_available is not None:
+            return self._ocr_available
         
-    def extract_text(self) -> str:
-        """Extract text from all pages of PDF"""
         try:
-            with pdfplumber.open(self.pdf_path) as pdf:
-                pages = []
-                for page in pdf.pages:
-                    text = page.extract_text()
-                    if text:
-                        pages.append(text)
-                self.text = '\n'.join(pages)
+            import pytesseract
+            from pdf2image import convert_from_path
+            # Test tesseract is installed
+            pytesseract.get_tesseract_version()
+            self._ocr_available = True
+        except Exception:
+            self._ocr_available = False
+        
+        return self._ocr_available
+    
+    def _extract_with_ocr(self) -> str:
+        """Extract text using OCR (for scanned PDFs)"""
+        try:
+            import pytesseract
+            from pdf2image import convert_from_path
             
-            print(f"✓ Extracted {len(self.text)} chars from {self.pdf_path.name}")
-            return self.text
+            # Convert PDF pages to images
+            images = convert_from_path(str(self.file_path), dpi=300)
             
+            text_parts = []
+            for i, image in enumerate(images):
+                # Use Spanish language for better recognition
+                page_text = pytesseract.image_to_string(image, lang='spa')
+                text_parts.append(page_text)
+                print(f"  OCR page {i+1}: {len(page_text)} chars")
+            
+            return "\n".join(text_parts)
+        
         except Exception as e:
-            print(f"✗ Error extracting from {self.pdf_path.name}: {e}")
+            print(f"  OCR failed: {e}")
             return ""
     
-    def parse(self) -> Dict[str, Any]:
-        """
-        Parse document and extract fields
-        Override in subclasses
-        """
-        self.extract_text()
-        return {}
-    
-    def _parse_date(self, date_str: str) -> Optional[str]:
-        """Parse date in DD/MM/YYYY format"""
-        if not date_str:
-            return None
+    def extract_text(self) -> str:
+        """Extract text from PDF, with automatic OCR fallback for scanned documents"""
+        if self.text:
+            return self.text
         
-        # Try DD/MM/YYYY format
-        match = re.search(r'(\d{2})/(\d{2})/(\d{4})', date_str)
-        if match:
-            return f"{match.group(1)}/{match.group(2)}/{match.group(3)}"
+        # First try pdfplumber (for digital PDFs)
+        try:
+            with pdfplumber.open(self.file_path) as pdf:
+                text_parts = []
+                for page in pdf.pages:
+                    page_text = page.extract_text() or ""
+                    text_parts.append(page_text)
+                
+                self.text = "\n".join(text_parts)
+        except Exception as e:
+            print(f"  pdfplumber error: {e}")
+            self.text = ""
         
-        return None
+        # Check if we got meaningful text
+        # If text is too short or empty, try OCR
+        if len(self.text.strip()) < 100:
+            if self._check_ocr_available():
+                print(f"  PDF appears scanned, using OCR...")
+                self.text = self._extract_with_ocr()
+            else:
+                print(f"  ⚠️  PDF is scanned but OCR not available. Install: brew install tesseract tesseract-lang poppler && pip install pytesseract pdf2image")
+        
+        if self.text:
+            print(f"✓ Extracted {len(self.text)} chars from {self.file_path.name}")
+        else:
+            print(f"✗ No text extracted from {self.file_path.name}")
+        
+        return self.text
     
-    def _extract_field_after_label(self, label: str) -> Optional[str]:
-        """Extract value that appears after a label"""
-        pattern = f"{label}[:\\s]+(.+?)(?=\\n|$)"
-        match = re.search(pattern, self.text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        return None
+    def parse(self) -> dict:
+        """Override in subclasses"""
+        raise NotImplementedError("Subclasses must implement parse()")
     
-    def _extract_cif(self) -> Optional[str]:
-        """Extract CIF (Spanish company tax ID)"""
-        # CIF format: Letter + 8 digits
-        match = re.search(r'\b[A-Z]\d{8}\b', self.text)
-        if match:
-            return match.group(0)
-        return None
-    
-    def _extract_dni(self) -> Optional[str]:
-        """Extract DNI (Spanish ID number)"""
-        # DNI format: 8 digits + Letter
-        match = re.search(r'\b\d{8}[A-Z]\b', self.text)
-        if match:
-            return match.group(0)
-        return None
+    def _clean_text(self, text: str) -> str:
+        """Clean extracted text"""
+        if not text:
+            return ""
+        # Remove multiple spaces
+        text = re.sub(r' +', ' ', text)
+        # Remove multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
