@@ -79,12 +79,22 @@ if uploaded_file is not None:
             st.metric("Documents Parsed", len(generator.parsed_data))
         
         with col2:
-            homeowner = generator.parsed_data.get('CONTRATO', {}).get('homeowner_name', 'N/A')
-            st.metric("Homeowner", homeowner)
+            # Try CONTRATO first, then CALCULO as fallback
+            homeowner = generator.parsed_data.get('CONTRATO', {}).get('homeowner_name')
+            if not homeowner or homeowner == 'NOT FOUND':
+                homeowner = generator.parsed_data.get('CALCULO', {}).get('client_name')
+            if not homeowner or homeowner == 'NOT FOUND':
+                homeowner = generator.parsed_data.get('FACTURA', {}).get('homeowner_name')
+            st.metric("Homeowner", homeowner or 'NOT FOUND')
         
         with col3:
-            energy = generator.parsed_data.get('CONTRATO', {}).get('energy_savings', 'N/A')
-            st.metric("Energy Savings (kWh)", energy)
+            # Try CONTRATO first, then CERTIFICADO, then CALCULO
+            energy = generator.parsed_data.get('CONTRATO', {}).get('energy_savings')
+            if not energy or energy == 'NOT FOUND':
+                energy = generator.parsed_data.get('CERTIFICADO', {}).get('energy_savings')
+            if not energy or energy == 'NOT FOUND':
+                energy = generator.parsed_data.get('CALCULO', {}).get('ae')
+            st.metric("Energy Savings (kWh)", energy or 'NOT FOUND')
         
         # Show parsed documents
         with st.expander("View Parsed Documents"):
