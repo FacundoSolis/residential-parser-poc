@@ -256,12 +256,18 @@ class MatrixGenerator:
         
         # Phone
         ws[f'B{current_row}'] = 'Phone number'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'homeowner_phone')
+        phone = self._get_value('CONTRATO', 'homeowner_phone')
+        if not phone:
+            phone = self._get_value('FACTURA', 'homeowner_phone')
+        ws[f'C{current_row}'] = phone
         current_row += 1
         
         # Mail
         ws[f'B{current_row}'] = 'Mail'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'homeowner_email')
+        email = self._get_value('CONTRATO', 'homeowner_email')
+        if not email:
+            email = self._get_value('FACTURA', 'homeowner_email')
+        ws[f'C{current_row}'] = email
         current_row += 1
         
         # Signatures
