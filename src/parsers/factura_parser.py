@@ -1,5 +1,6 @@
 """
 Parser for FACTURA documents
+Extracts invoice details including subtotal, deductions, final amount, and installer info
 """
 from .base_parser import BaseDocumentParser
 from typing import Dict, Any
@@ -22,7 +23,13 @@ class FacturaParser(BaseDocumentParser):
             'homeowner_address': self._extract_homeowner_address(),
             'homeowner_email': self._extract_email(),
             'homeowner_phone': self._extract_phone(),
+            'subtotal': self._extract_subtotal(),
+            'deduction': self._extract_deduction(),
             'amount': self._extract_amount(),
+            # Installer info
+            'installer_name': self._extract_installer_name(),
+            'installer_address': self._extract_installer_address(),
+            'installer_cif': self._extract_installer_cif(),
         }
         
         return result
@@ -30,13 +37,9 @@ class FacturaParser(BaseDocumentParser):
     def _extract_invoice_number(self) -> str:
         """Extract invoice number"""
         patterns = [
-            # "Factura Nº 15-10-2025-ND005117"
             r'[Ff]actura\s*[Nn][ºo°]?\s*([A-Z0-9][\w\-]+)',
-            # "Factura: F202502927"
             r'[Ff]actura[:\s]+([A-Z]?\d[\w\-]+)',
-            # "Nº Factura: XXX"
             r'[Nn][ºo°]?\s*[Ff]actura[:\s]+([A-Z0-9][\w\-]+)',
-            # "N° XXX" or "Nº XXX"
             r'[Nn][ºo°]\s+([A-Z0-9][\w\-]+)',
         ]
         
@@ -50,9 +53,7 @@ class FacturaParser(BaseDocumentParser):
     def _extract_invoice_date(self) -> str:
         """Extract invoice date"""
         patterns = [
-            # "Fecha: 15/10/2025"
             r'[Ff]echa[:\s]+([\d]{1,2}/[\d]{1,2}/[\d]{4})',
-            # Any date format dd/mm/yyyy
             r'\b(\d{1,2}/\d{1,2}/\d{4})\b',
         ]
         
@@ -66,13 +67,9 @@ class FacturaParser(BaseDocumentParser):
     def _extract_homeowner_name(self) -> str:
         """Extract customer/homeowner name"""
         patterns = [
-            # "Mr FERRERO PEREZ EVENCIO" or "Mr. FERRERO PEREZ EVENCIO"
             r'[Mm]r\.?\s+([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]+)',
-            # "Sra. NAME" or "Sr. NAME"
             r'[Ss]r[a]?\.?\s+([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]+)',
-            # "Cliente: Name"
             r'[Cc]liente[:\s]+([A-ZÑÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÑÁÉÍÓÚ][a-zñáéíóú]+)+)',
-            # "Nombre: Name"  
             r'[Nn]ombre[:\s]+([A-ZÑÁÉÍÓÚ][a-zñáéíóú]+(?:\s+[A-ZÑÁÉÍÓÚ][a-zñáéíóú]+)+)',
         ]
         
@@ -80,7 +77,6 @@ class FacturaParser(BaseDocumentParser):
             match = re.search(pattern, self.text)
             if match:
                 name = match.group(1).strip()
-                # Clean up: remove trailing address parts
                 name = re.sub(r'\s+(CL|AV|C/|CALLE|PZ|PLAZA).*', '', name, flags=re.IGNORECASE)
                 return name.strip()
         
@@ -89,30 +85,25 @@ class FacturaParser(BaseDocumentParser):
     def _extract_homeowner_dni(self) -> str:
         """Extract DNI"""
         patterns = [
-            # "DNI:10153878E" or "DNI: 10153878E"
-            r'[Dd][Nn][Ii][:\s]*(\d{7,8}[A-Z])',
-            # "NIF: 10153878E"
-            r'[Nn][Ii][Ff][:\s]*(\d{7,8}[A-Z])',
-            # Standalone DNI pattern
-            r'\b(\d{8}[A-Z])\b',
+            r'[Dd][Nn][Ii][:\s]*(\d{7,8}[-]?[A-Z])',
+            r'[Nn][Ii][Ff][:\s]*(\d{7,8}[-]?[A-Z])',
+            r'\b(\d{8}[-]?[A-Z])\b',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, self.text)
             if match:
-                return match.group(1)
+                dni = match.group(1).replace('-', '')
+                return dni
         
         return "NOT FOUND"
     
     def _extract_homeowner_address(self) -> str:
-        """Extract address - lines after name, before Tel/Email"""
-        # Try to find address between name and contact info
+        """Extract address"""
         patterns = [
-            # Address line starting with CL, AV, C/, CALLE, PZ, PLAZA followed by postal code line
             r'((?:CL|AV|C/|CALLE|PZ|PLAZA)\s+[^\n]+\n\d{5}\s+[^\n]+)',
-            # "Dirección: XXX"
+            r'((?:CL|AV|C/|CALLE|PZ|PLAZA)\s+[^\n]+)',
             r'[Dd]irecci[oó]n[:\s]+([^\n]+)',
-            # "Domicilio: XXX"
             r'[Dd]omicilio[:\s]+([^\n]+)',
         ]
         
@@ -120,24 +111,19 @@ class FacturaParser(BaseDocumentParser):
             match = re.search(pattern, self.text, re.IGNORECASE)
             if match:
                 addr = match.group(1).strip()
-                # Clean up newlines
                 addr = addr.replace('\n', ', ')
                 return addr
         
         return "NOT FOUND"
     
     def _extract_email(self) -> str:
-        """Extract email"""
-        patterns = [
-            r'[Ee]mail\s*[:\s]*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
-            r'[Cc]orreo\s*[:\s]*([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)',
-            r'\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)\b',
-        ]
+        """Extract email - homeowner's email (first one found after name)"""
+        # Find all emails
+        emails = re.findall(r'\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)\b', self.text)
         
-        for pattern in patterns:
-            match = re.search(pattern, self.text)
-            if match:
-                return match.group(1)
+        # First email is usually the homeowner's
+        if emails:
+            return emails[0]
         
         return "NOT FOUND"
     
@@ -147,8 +133,6 @@ class FacturaParser(BaseDocumentParser):
             r'[Tt]el(?:[eé]fono)?\.?\s*[:\s]*(\d{9})',
             r'[Tt]lf\.?\s*[:\s]*(\d{9})',
             r'[Mm][oó]vil\s*[:\s]*(\d{9})',
-            r'\b(6\d{8})\b',  # Spanish mobile starting with 6
-            r'\b(9\d{8})\b',  # Spanish landline starting with 9
         ]
         
         for pattern in patterns:
@@ -156,24 +140,105 @@ class FacturaParser(BaseDocumentParser):
             if match:
                 return match.group(1)
         
+        # Find standalone 9-digit numbers (Spanish phones)
+        phones = re.findall(r'\b([69]\d{8})\b', self.text)
+        if phones:
+            return phones[0]
+        
         return "NOT FOUND"
     
-    def _extract_amount(self) -> str:
-        """Extract total amount"""
+    def _extract_subtotal(self) -> str:
+        """Extract subtotal amount (before deductions)"""
         patterns = [
-            # "A pagar 1.21€" or "A pagar: 1.21 €"
-            r'[Aa]\s*[Pp]agar[:\s]*([\d.,]+)\s*€',
-            # "Total 1 €"
-            r'[Tt]otal[:\s]+([\d.,]+)\s*€',
-            # "Importe: XXX €"
-            r'[Ii]mporte[:\s]+([\d.,]+)\s*€',
-            # "TOTAL: XXX €"
-            r'TOTAL[:\s]+([\d.,]+)\s*€',
+            # "Subtotal 1319.68 €" or "Subtotal 1393.39 €"
+            r'[Ss]ubtotal\s+([\d.,]+)\s*€',
+            r'[Ss]ub[-]?total[:\s]*([\d.,]+)\s*€',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, self.text)
             if match:
                 return f"{match.group(1)} €"
+        
+        return "NOT FOUND"
+    
+    def _extract_deduction(self) -> str:
+        """Extract deduction amount (CAE subsidies) - negative number"""
+        patterns = [
+            # Negative number in brackets like "[1392.39€" or "-1318.68€"
+            r'\[?([-]?[\d.,]+)\s*€?\s*\+?',
+            r'(-[\d.,]+)\s*€',
+        ]
+        
+        # Look for negative amounts
+        matches = re.findall(r'(-[\d.,]+)\s*€', self.text)
+        if matches:
+            # Return the largest negative deduction
+            return f"{matches[0]} €"
+        
+        # Look for bracketed amounts like [1392.39€
+        match = re.search(r'\[([\d.,]+)\s*€', self.text)
+        if match:
+            return f"-{match.group(1)} €"
+        
+        return "NOT FOUND"
+    
+    def _extract_amount(self) -> str:
+        """Extract total amount (A pagar)"""
+        patterns = [
+            r'[Aa]\s*[Pp]agar[:\s]*([\d.,]+)\s*€',
+            r'(?<![Ss]ub)[Tt]otal[:\s]+([\d.,]+)\s*€',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text)
+            if match:
+                return f"{match.group(1)} €"
+        
+        return "NOT FOUND"
+    
+    def _extract_installer_name(self) -> str:
+        """Extract installer company name from bottom of invoice"""
+        patterns = [
+            # "ECORENOVA ESPANA;" or "ETL Aislamiento;"
+            r'(ECORENOVA\s*ESPA[NÑ]A)',
+            r'(ETL\s*[Aa]islamiento)',
+            r'^([A-Z][A-Z\s]+);',  # Company name ending with semicolon
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.MULTILINE)
+            if match:
+                return match.group(1).strip()
+        
+        return "NOT FOUND"
+    
+    def _extract_installer_address(self) -> str:
+        """Extract installer address from bottom of invoice"""
+        patterns = [
+            # "C TUSET, NUM 20 PLANTA 8, PUERTA, 8 08006 BARCELONA"
+            r'([Cc]\s+[A-Z][A-Z\s,]+\d{5}\s+[A-Z]+)',
+            r'(CALLE\s+[A-Z][A-Z\s,]+\d{5}\s+[A-Z]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text)
+            if match:
+                return match.group(1).strip()
+        
+        return "NOT FOUND"
+    
+    def _extract_installer_cif(self) -> str:
+        """Extract installer CIF"""
+        patterns = [
+            r'C\.?I\.?F\.?[:\s]*([AB]\d{8})',
+            r'CIF[:\s]*([AB]\d{8})',
+            r'\b([AB]\d{8})\b',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text)
+            if match:
+                return match.group(1)
         
         return "NOT FOUND"

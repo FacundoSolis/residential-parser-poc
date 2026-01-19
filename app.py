@@ -88,12 +88,12 @@ if uploaded_file is not None:
             st.metric("Homeowner", homeowner or 'NOT FOUND')
         
         with col3:
-            # Try CONTRATO first, then CERTIFICADO, then CALCULO
-            energy = generator.parsed_data.get('CONTRATO', {}).get('energy_savings')
+            # Priority: CALCULO ae > CERTIFICADO energy_savings > CONTRATO energy_savings
+            energy = generator.parsed_data.get('CALCULO', {}).get('ae')
             if not energy or energy == 'NOT FOUND':
                 energy = generator.parsed_data.get('CERTIFICADO', {}).get('energy_savings')
             if not energy or energy == 'NOT FOUND':
-                energy = generator.parsed_data.get('CALCULO', {}).get('ae')
+                energy = generator.parsed_data.get('CONTRATO', {}).get('energy_savings')
             st.metric("Energy Savings (kWh)", energy or 'NOT FOUND')
         
         # Show parsed documents
