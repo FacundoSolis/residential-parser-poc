@@ -231,12 +231,9 @@ class MatrixGenerator:
         dni_name   = self._get_value('DNI', 'name')
         calc_name  = self._get_value('CALCULO', 'client_name')
 
-        # Columna C: mejor nombre disponible (prioridad práctica con fallback fuerte)
-        name_contrato = self._get_value('CONTRATO', 'homeowner_name')
-        name_factura = self._get_value('FACTURA', 'homeowner_name')
-        name_calc = self._get_value('CALCULO', 'client_name')
-        
-        ws[f'C{current_row}'] = name_contrato if name_contrato not in ("NOT FOUND", "", None) else (name_factura or name_calc)
+        # Columna C: mejor nombre disponible...
+        best_name = self._pick_best(fact_name, contr_name, decl_name, calc_name, min_len=6)
+        ws[f'C{current_row}'] = best_name
 
         # Mantén las otras columnas como están (sirven para comparar)
         ws[f'E{current_row}'] = decl_name
@@ -255,7 +252,13 @@ class MatrixGenerator:
         dni_num   = self._get_value('DNI', 'dni_number')
 
         # Columna C: fallback fuerte - usa contrato si es válido, sino factura
-        ws[f'C{current_row}'] = contr_dni if contr_dni not in ("NOT FOUND", "", None) else fact_dni
+        ws[f'C{current_row}'] = self._pick_best(
+            fact_dni,
+            contr_dni,
+            decl_dni,
+            dni_num,
+            min_len=9
+        )
 
         ws[f'E{current_row}'] = decl_dni
         ws[f'F{current_row}'] = fact_dni
@@ -368,12 +371,21 @@ class MatrixGenerator:
         
         # Catastral ref
         ws[f'B{current_row}'] = 'Catastral ref'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'catastral_ref')
-        ws[f'E{current_row}'] = self._get_value('DECLARACION', 'catastral_ref')
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'catastral_ref')
-        ws[f'I{current_row}'] = self._get_value('CEE', 'catastral_ref')
-        ws[f'J{current_row}'] = self._get_value('REGISTRO', 'catastral_ref')
+
+        contr_cat = self._get_value('CONTRATO', 'catastral_ref')
+        decl_cat  = self._get_value('DECLARACION', 'catastral_ref')
+        cert_cat  = self._get_value('CERTIFICADO', 'catastral_ref')
+        cee_cat   = self._get_value('CEE', 'catastral_ref')
+        reg_cat   = self._get_value('REGISTRO', 'catastral_ref')
+
+        ws[f'C{current_row}'] = self._pick_best(cert_cat, contr_cat, cee_cat, reg_cat, decl_cat, min_len=10)
+
+        ws[f'E{current_row}'] = decl_cat
+        ws[f'H{current_row}'] = cert_cat
+        ws[f'I{current_row}'] = cee_cat
+        ws[f'J{current_row}'] = reg_cat
         current_row += 1
+
         
         # UTM coordinates
         ws[f'B{current_row}'] = 'UTM coordinates'
@@ -560,6 +572,11 @@ class MatrixGenerator:
             return False
         # basura típica OCR
         if s.upper() in {"C", "CL", "CALLE", "AV", "S/N"}:
+            return False
+        # evita MRZ basura típica del DNI
+        if re.fullmatch(r"[A-Z0-9<]{10,}", s.upper()):
+            return False
+        if s.upper().endswith(" MANEC"):
             return False
         return True
 

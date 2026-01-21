@@ -4,11 +4,24 @@ Base parser with automatic OCR support for scanned PDFs and images
 import re
 from pathlib import Path
 from typing import Optional
+import os
+import shutil
 
 import pdfplumber
 import pytesseract
-pytesseract.pytesseract.tesseract_cmd = "/opt/local/bin/tesseract"
 
+
+def _configure_binaries():
+    # Tesseract
+    tess = os.getenv("TESSERACT_CMD") or shutil.which("tesseract") or "/usr/bin/tesseract"
+    pytesseract.pytesseract.tesseract_cmd = tess
+
+    # Poppler (optional). If pdftoppm exists in PATH, pdf2image can work without poppler_path.
+    poppler = os.getenv("POPPLER_PATH")
+    return poppler if poppler else None
+
+
+POPPLER_PATH = _configure_binaries()
 
 
 class BaseDocumentParser:
@@ -20,17 +33,21 @@ class BaseDocumentParser:
         self._ocr_available: Optional[bool] = None
 
     def _check_ocr_available(self) -> bool:
-        """Check if OCR dependencies are available (tesseract + poppler)."""
         if self._ocr_available is not None:
             return self._ocr_available
 
         try:
-            import pytesseract  # noqa: F401
             from pdf2image import convert_from_path  # noqa: F401
 
-            version = pytesseract.get_tesseract_version()
-            print("✅ Tesseract version:", version)
+            tess = shutil.which("tesseract")
+            pdftoppm = shutil.which("pdftoppm")
 
+            if not tess:
+                raise RuntimeError("tesseract not found in PATH")
+            if not pdftoppm and not POPPLER_PATH:
+                raise RuntimeError("poppler (pdftoppm) not found in PATH and POPPLER_PATH not set")
+
+            _ = pytesseract.get_tesseract_version()
             self._ocr_available = True
         except Exception as e:
             print("❌ OCR not available:", e)
@@ -43,20 +60,18 @@ class BaseDocumentParser:
         try:
             from pdf2image import convert_from_path
 
-            # Heurística: si es DNI (por nombre de archivo), subimos DPI y ajustamos OCR
             is_dni = "dni" in self.file_path.name.lower()
-
             dpi = 450 if is_dni else 300
+
             images = convert_from_path(
                 str(self.file_path),
                 dpi=dpi,
-                poppler_path="/opt/local/bin",
+                poppler_path=POPPLER_PATH,  # can be None
             )
 
             text_parts = []
             for i, image in enumerate(images):
                 if is_dni:
-                    # PSM 6 suele ir bien para bloques de texto
                     config = "--oem 1 --psm 6"
                     page_text = pytesseract.image_to_string(image, lang="spa", config=config)
                 else:
@@ -71,16 +86,12 @@ class BaseDocumentParser:
             print(f"  OCR PDF failed: {e}")
             return ""
 
-
     def _extract_with_ocr_image(self) -> str:
         """Extract text using OCR for images (.jpg/.jpeg/.png)."""
         try:
-            import pytesseract
             from PIL import Image
-
             img = Image.open(self.file_path)
             return pytesseract.image_to_string(img, lang="spa")
-
         except Exception as e:
             print(f"  OCR image failed: {e}")
             return ""
@@ -96,6 +107,7 @@ class BaseDocumentParser:
         if ext in {".jpg", ".jpeg", ".png"}:
             if self._check_ocr_available():
                 self.text = self._extract_with_ocr_image()
+                self.text = self._clean_text(self.text)  # ✅ clean
             else:
                 print("  ⚠️ Image requires OCR but OCR not available.")
                 self.text = ""
@@ -110,6 +122,7 @@ class BaseDocumentParser:
                         page_text = page.extract_text() or ""
                         text_parts.append(page_text)
                     self.text = "\n".join(text_parts)
+                    self.text = self._clean_text(self.text)  # ✅ clean
             except Exception as e:
                 print(f"  pdfplumber error: {e}")
                 self.text = ""
@@ -119,6 +132,7 @@ class BaseDocumentParser:
                 if self._check_ocr_available():
                     print("  PDF appears scanned, using OCR...")
                     self.text = self._extract_with_ocr_pdf()
+                    self.text = self._clean_text(self.text)  # ✅ clean
                 else:
                     print("  ⚠️ PDF is scanned but OCR not available.")
                     self.text = ""
@@ -130,21 +144,17 @@ class BaseDocumentParser:
 
             return self.text
 
-        # Unsupported type
         print(f"  ⚠️ Unsupported file type: {ext}")
         self.text = ""
         return self.text
 
     def parse(self) -> dict:
-        """Override in subclasses"""
         raise NotImplementedError("Subclasses must implement parse()")
 
     def _clean_text(self, text: str) -> str:
         if not text:
             return ""
-        # colapsa espacios
         text = re.sub(r"[ \t]+", " ", text)
-        # quita líneas de 1-2 caracteres (basura OCR)
         lines = []
         for ln in text.splitlines():
             s = ln.strip()
@@ -152,7 +162,5 @@ class BaseDocumentParser:
                 continue
             lines.append(ln)
         text = "\n".join(lines)
-        # reduce saltos excesivos
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
-

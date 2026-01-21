@@ -216,11 +216,21 @@ class CertificadoParser(BaseDocumentParser):
             end = min(len(t), m.end() + 25)
             ctx = t[start:end].lower()
 
-            # si cerca hay unidades/variables térmicas -> ignorar
-            if re.search(r"(w/m2k|m2k/w|conductividad|λ|lambda|ui\b|uf\b|rtotal|resistencia)", ctx):
+            # contexto malo general
+            if re.search(r"(w/mk|w/m2k|m2k/w|conductividad|λ|lambda|ui\b|uf\b|rtotal|resistencia)", ctx):
+                continue
+
+            # ✅ descarta 0,0x y 0,1 típicos de conductividad / resistencias aire
+            if re.fullmatch(r"0,[0-1]\d", val) or val in {"0,1", "0,10"}:
+                continue
+
+            # ✅ refuerza contexto malo adicional (por si OCR mete 0,047 etc)
+            if re.search(r"(w/mk|w/m2k|m2k/w|0,047|0\.047|0,1)", ctx):
                 continue
 
             return val
+
+
 
         return "NOT FOUND"
 
