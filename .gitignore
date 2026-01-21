@@ -1,9 +1,26 @@
+# Datos sensibles de clientes
+data/
+!data/.gitkeep
+
+# Python
 __pycache__/
-*.pyc
-*.pyo
-.DS_Store
-.env
+*.py[cod]
+*$py.class
+*.so
+.Python
 venv/
-data/output/
-*.zip
+env/
+
+# Streamlit
 .streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Archivos temporales
+*_text.txt
+*.zip
