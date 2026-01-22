@@ -69,7 +69,8 @@ class CalculoParser:
             for row in ws.iter_rows(min_row=3, max_row=5, values_only=True):
                 if len(row) > 15:
                     if row[14] == 'Área total' and row[15] is not None:
-                        return str(row[15])
+                        return self._format_num(row[15], nd=2)
+
         except:
             pass
         return "NOT FOUND"
@@ -84,20 +85,53 @@ class CalculoParser:
         except:
             pass
         return "NOT FOUND"
+
+    def _format_percent(self, v) -> str:
+        if v is None:
+            return "NOT FOUND"
+        try:
+            x = float(v)
+            if x <= 0:
+                return "NOT FOUND"
+            if x < 1:       # 0.1689 -> 16.89
+                x *= 100
+            return f"{x:.2f}%"
+        except:
+            s = str(v).strip()
+            return s if s else "NOT FOUND"
+
+    def _format_decimal_comma(self, v) -> str:
+        if v is None:
+            return "NOT FOUND"
+        s = str(v).strip()
+        if not s:
+            return "NOT FOUND"
+        return s.replace(".", ",")
+
     
     def _extract_porcentaje(self, ws) -> str:
         """Extract percentage"""
         try:
             for row in ws.iter_rows(min_row=5, max_row=6, values_only=True):
-                if len(row) > 15:
-                    if row[14] == 'Porcentaje' and row[15] is not None:
-                        val = row[15]
-                        if isinstance(val, (int, float)):
-                            return f"{val:.2f}%"
-                        return f"{val}%"
+                if len(row) > 15 and row[14] == 'Porcentaje' and row[15] is not None:
+                    return self._format_percent(row[15])
         except:
             pass
         return "NOT FOUND"
+    def _format_percent(self, v) -> str:
+        if v is None:
+            return "NOT FOUND"
+        try:
+            x = float(v)
+            if x <= 0:
+                return "NOT FOUND"
+            if x < 1:
+                x *= 100
+            return f"{x:.2f}%"
+        except:
+            return "NOT FOUND"
+
+
     
     def _extract_act_code(self, ws) -> str:
         """Extract RES code - look for RES020 or RES010 in column O (index 14)"""
@@ -150,7 +184,8 @@ class CalculoParser:
             for row in ws.iter_rows(min_row=10, max_row=15, values_only=True):
                 if len(row) > 18 and row[14] is not None and 'RES' in str(row[14]):
                     if row[18] is not None:
-                        return str(row[18])
+                        return self._format_num(row[18], nd=2)
+
         except:
             pass
         return "NOT FOUND"
@@ -171,8 +206,9 @@ class CalculoParser:
         try:
             for row in ws.iter_rows(min_row=10, max_row=15, values_only=True):
                 if len(row) > 20 and row[14] is not None and 'RES' in str(row[14]):
-                    if row[20] is not None:
-                        return str(row[20])
+                   if row[20] is not None:
+                        return self._format_kwh(row[20])
+
         except:
             pass
         return "NOT FOUND"
@@ -189,29 +225,69 @@ class CalculoParser:
         return "NOT FOUND"
     
     def _extract_methodology(self, ws) -> str:
-        """Extract calculation methodology value - Row 17, column R (index 17)
-        This is the numeric value like '0,70' next to the methodology description
-        """
+        """Extract calculation methodology value"""
         try:
             for row_idx, row in enumerate(ws.iter_rows(min_row=16, max_row=20, values_only=True), 16):
-                if len(row) > 17:
-                    # Look for row with methodology description and numeric value
-                    if row[14] is not None and row[17] is not None:
-                        desc = str(row[14]).lower()
-                        # Check if this looks like a methodology row (has description text)
-                        if 'puertas' in desc or 'ventanas' in desc or 'aberturas' in desc:
-                            val = row[17]
-                            if val is not None:
-                                return str(val)
-                        # Also check if it's just a numeric value in the methodology column
-                        elif row[14] != 'ESTADO:':
-                            try:
-                                # Try to see if column R has a numeric value
-                                val = row[17]
-                                if isinstance(val, (int, float)):
-                                    return str(val)
-                            except:
-                                pass
+                if len(row) > 17 and row[14] is not None and row[17] is not None:
+                    desc = str(row[14]).lower()
+
+                    if 'puertas' in desc or 'ventanas' in desc or 'aberturas' in desc:
+                        val = row[17]
+                        if val is not None:
+                            return self._format_decimal_comma(val)
+
+                    elif row[14] != 'ESTADO:':
+                        val = row[17]
+                        if isinstance(val, (int, float, str)):
+                            return self._format_decimal_comma(val)
         except:
             pass
         return "NOT FOUND"
+
+    def _format_num(self, v, nd=2) -> str:
+        if v is None:
+            return "NOT FOUND"
+        try:
+            x = float(v)
+            # si es casi entero, devuelve entero
+            if abs(x - round(x)) < 0.01:
+                return str(int(round(x)))
+            s = f"{x:.{nd}f}".rstrip("0").rstrip(".")
+            return s
+        except:
+            # si ya viene como string bien, lo devuelves
+            return str(v).strip() if str(v).strip() else "NOT FOUND"
+
+    def _format_kwh(self, v) -> str:
+        if v is None:
+            return "NOT FOUND"
+        try:
+            x = float(v)
+            if abs(x - round(x)) < 0.01:
+                return str(int(round(x)))
+            return f"{x:.2f}".rstrip("0").rstrip(".")
+        except:
+            return str(v).strip() if str(v).strip() else "NOT FOUND"
+
+def _format_percent(self, v) -> str:
+    if v is None:
+        return "NOT FOUND"
+    try:
+        x = float(v)
+        if x <= 0:
+            return "NOT FOUND"
+        if x < 1:
+            x *= 100
+        return f"{x:.2f}%"
+    except:
+        # si viene "16.89%" o "0,83" etc
+        s = str(v).strip()
+        return s if s else "NOT FOUND"
+
+def _format_decimal_comma(self, v) -> str:
+    if v is None:
+        return "NOT FOUND"
+    s = str(v).strip()
+    if not s:
+        return "NOT FOUND"
+    return s.replace(".", ",")

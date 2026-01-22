@@ -26,6 +26,13 @@ class CertificadoParser(BaseDocumentParser):
             "surface": self._extract_surface(),
             "climatic_zone": self._extract_climatic_zone(),
             "calculation_methodology": self._extract_calculation_methodology(),
+            "fp": self._extract_fp(),
+            "ui": self._extract_ui(),
+            "uf": self._extract_uf(),
+            "g": self._extract_g(),
+            "b": self._extract_b(),
+            "isolation_thickness": self._extract_isolation_thickness(),
+
         }
 
         return result
@@ -233,6 +240,83 @@ class CertificadoParser(BaseDocumentParser):
 
 
         return "NOT FOUND"
+    def _extract_table_value(self, key: str) -> str:
+        """
+        Busca líneas tipo:
+        Fp  1
+        Ui: 3,26
+        Uf = 0.23
+        """
+        if not self.text:
+            return "NOT FOUND"
+
+        t = self.text.replace("O", "0")  # OCR típico
+        # ^\s*Fp\s*[:=]?\s*(valor)\s*$
+        m = re.search(
+            rf"(?im)^\s*{re.escape(key)}\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)\s*$",
+            t
+        )
+        if not m:
+            return "NOT FOUND"
+
+        return m.group(1).replace(".", ",")
+
+    def _extract_fp(self) -> str:
+        t = self.text or ""
+        m = re.search(r"\bF\s*P\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        if not m:
+            m = re.search(r"\bFp\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        return m.group(1).replace(".", ",") if m else "NOT FOUND"
+
+    def _extract_ui(self) -> str:
+        t = self.text or ""
+        m = re.search(r"\bU\s*I\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        if not m:
+            m = re.search(r"\bUi\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        return m.group(1).replace(".", ",") if m else "NOT FOUND"
+
+    def _extract_uf(self) -> str:
+        t = self.text or ""
+        m = re.search(r"\bU\s*F\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        if not m:
+            m = re.search(r"\bUf\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        return m.group(1).replace(".", ",") if m else "NOT FOUND"
+
+    def _extract_g(self) -> str:
+        t = self.text or ""
+        # G o Gj o G j
+        m = re.search(r"\bG\s*j?\b\s*[:=]?\s*([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        return m.group(1).replace(".", ",") if m else "NOT FOUND"
+
+    def _extract_b(self) -> str:
+        t = self.text or ""
+        # Permite texto entre "b" y el número (OCR mete palabras)
+        m = re.search(r"(?:valor\s+de\s+b\b|b\b)[^0-9]{0,80}([0-9]+(?:[.,]\d+)?)", t, re.IGNORECASE)
+        return m.group(1).replace(".", ",") if m else "NOT FOUND"
+
+
+    def _extract_isolation_thickness(self) -> str:
+        t = self.text or ""
+
+        # 1) mm directo
+        m = re.search(r"(?:espesor|aislamiento|thickness|e\s*=)[^0-9]{0,40}(\d{2,4})\s*mm", t, re.IGNORECASE)
+        if m:
+            return f"{m.group(1)} mm"
+
+        # 2) cm (tu caso: "Cubierta:16 cm de Aislamiento ...")
+        m = re.search(r"(?:cubierta|fachada|muro|cerramiento|aislamiento|espesor)[^\n]{0,80}?(\d+(?:[.,]\d+)?)\s*cm", t, re.IGNORECASE)
+        if m:
+            cm = float(m.group(1).replace(",", "."))
+            mm = int(round(cm * 10))
+            return f"{mm} mm"
+
+        # 3) fallback bruto (último recurso)
+        m = re.search(r"\b(\d{2,4})\s*mm\b", t, re.IGNORECASE)
+        return f"{m.group(1)} mm" if m else "NOT FOUND"
+
+
+
+
 
 
 

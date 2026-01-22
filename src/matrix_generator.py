@@ -6,7 +6,7 @@ UPDATED: Matches Travis's Excel template structure
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 import re
 
 from src.parsers.contrato_parser import ContratoParser
@@ -17,6 +17,8 @@ from src.parsers.cee_parser import CeeParser
 from src.parsers.registro_parser import RegistroParser
 from src.parsers.dni_parser import DniParser
 from src.parsers.calculo_parser import CalculoParser
+from src.parsers.ficha_parser import FichaParser
+
 
 
 class MatrixGenerator:
@@ -31,6 +33,7 @@ class MatrixGenerator:
         'REGISTRO': RegistroParser,
         'DNI': DniParser,
         'CALCULO': CalculoParser,
+        'FICHA': FichaParser,
     }
     
     DOCUMENT_PATTERNS = {
@@ -238,7 +241,7 @@ class MatrixGenerator:
         # Mantén las otras columnas como están (sirven para comparar)
         ws[f'E{current_row}'] = decl_name
         ws[f'F{current_row}'] = fact_name
-        ws[f'K{current_row}'] = dni_name
+        ws[f'K{current_row}'] = "" if not self._is_valid_cell_value(dni_name, min_len=6) else dni_name
         ws[f'L{current_row}'] = calc_name
 
         current_row += 1
@@ -320,11 +323,14 @@ class MatrixGenerator:
         
         # Code
         ws[f'B{current_row}'] = 'Code (010/020)'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'act_code')
-        ws[f'E{current_row}'] = self._get_value('DECLARACION', 'act_code')
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'act_code')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'act_code')
+
+        ws[f'C{current_row}'] = self.to_010_020(self._get_value('CONTRATO', 'act_code'))
+        ws[f'E{current_row}'] = self.to_010_020(self._get_value('DECLARACION', 'act_code'))
+        ws[f'H{current_row}'] = self.to_010_020(self._get_value('CERTIFICADO', 'act_code'))
+        ws[f'L{current_row}'] = self.to_010_020(self._get_value('CALCULO', 'act_code'))
+
         current_row += 1
+
         
         # Energy savings
         ws[f'B{current_row}'] = 'Energy savings (kWh)'
@@ -332,12 +338,20 @@ class MatrixGenerator:
         contr_ae = self._get_value('CONTRATO', 'energy_savings')
         cert_ae  = self._get_value('CERTIFICADO', 'energy_savings')
         calc_ae  = self._get_value('CALCULO', 'ae')
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('FICHA', 'energy_savings'),
+            self._get_value('CERTIFICADO', 'energy_savings'),
+            self._get_value('CALCULO', 'ae'),
+            self._get_value('CONTRATO', 'energy_savings'),
+        ))
+
+
 
         # Columna C = mejor valor global con lógica inteligente
         ws[f'C{current_row}'] = self._pick_best_energy_savings(contr_ae, cert_ae, calc_ae)
 
-        ws[f'H{current_row}'] = cert_ae
-        ws[f'L{current_row}'] = calc_ae
+        ws[f'H{current_row}'] = self._norm_num(cert_ae)
+        ws[f'L{current_row}'] = self._norm_num(calc_ae)
 
         current_row += 1
 
@@ -414,51 +428,107 @@ class MatrixGenerator:
         
         # Fp
         ws[f'B{current_row}'] = 'Fp'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'fp')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'fp')
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('FICHA', 'fp'),
+            self._get_value('CERTIFICADO', 'fp'),
+            self._get_value('CALCULO', 'fp'),
+        ))
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'fp'))
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'fp'))
         current_row += 1
         
         # Ui (Ki)
         ws[f'B{current_row}'] = 'Ui'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'ui')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'ki')
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('FICHA', 'ui'),
+            self._get_value('CERTIFICADO', 'ui'),
+            self._get_value('CALCULO', 'ki'),
+        ))
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'ui'))
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'ki'))
         current_row += 1
         
         # Uf (Kf)
         ws[f'B{current_row}'] = 'Uf'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'uf')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'kf')
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('FICHA', 'uf'),
+            self._get_value('CERTIFICADO', 'uf'),
+            self._get_value('CALCULO', 'kf'),
+        ))
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'uf'))
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'kf'))
         current_row += 1
         
         # S (Surface)
         ws[f'B{current_row}'] = 'S'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'surface')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 's')
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('FICHA', 'surface'),
+            self._get_value('CERTIFICADO', 'surface'),
+            self._get_value('CALCULO', 's'),
+        ))
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'surface'))
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 's'))
         current_row += 1
         
         # Climatic zone
         ws[f'B{current_row}'] = 'Climatic zone'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'zone_climatique')
+        ws[f'D{current_row}'] = self._pick_best(
+            self._get_value('FICHA', 'climatic_zone'),
+            self._get_value('CERTIFICADO', 'climatic_zone'),
+        )
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')  # E1
+        ws[f'L{current_row}'] = ""  # OJO: 74 NO es zona, es G
         current_row += 1
-        
+
+        # G (surface coefficient / coef. zona) -> en tu caso 74
+        ws[f'B{current_row}'] = 'G'
+        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
+            self._get_value('CERTIFICADO', 'g'),
+            self._get_value('CALCULO', 'zone_climatique'),
+        ))
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'g'))  # 74,0
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'zone_climatique'))  # 74
+        current_row += 1
+
         # Isolation Thickness
         ws[f'B{current_row}'] = 'Isolation Thickness'
+        ws[f'D{current_row}'] = self._pick_best(
+            self._get_value('FICHA', 'isolation_thickness'),
+            self._get_value('CERTIFICADO', 'isolation_thickness'),
+        )
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_thickness')
         current_row += 1
         
-        # Surface coefficient
+        # Surface coefficient (0,83 is the new surface coefficient)
         ws[f'B{current_row}'] = 'Surface coefficient'
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'porcentaje')
-        current_row += 1
-        
-        # Calculation methodology
-        ws[f'B{current_row}'] = 'Calculation methodology (R*t)'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'calculation_methodology')
+
+        # D: queremos mostrar el "coeficiente final usado" (prioriza CALCULO 0,83)
+        ws[f'D{current_row}'] = self._pick_best(
+            self._get_value('CALCULO', 'calculation_methodology'),  # 0,83
+            self._get_value('CERTIFICADO', 'b'),
+        )
+
+        # H: solo mostrar b si NO es el default "1"
+        cert_b = self._get_value('CERTIFICADO', 'b')
+        ws[f'H{current_row}'] = "" if cert_b in {"", "1", "1,0", "1.0"} else cert_b
+
+        # L: 0,83 del cálculo
         ws[f'L{current_row}'] = self._get_value('CALCULO', 'calculation_methodology')
+
         current_row += 1
 
-        
+
+        # Calculation methodology (R*t)
+        ws[f'B{current_row}'] = 'Calculation methodology (R*t)'
+
+        rt = self._get_value('CERTIFICADO', 'calculation_methodology')  # 0,75
+
+        ws[f'D{current_row}'] = self._norm_num(rt)     # para que D no vaya vacía
+        ws[f'H{current_row}'] = self._norm_num(rt)
+        ws[f'L{current_row}'] = ""     # no duplicar 0,83 aquí
+
+        current_row += 1
+
         # Photos
         ws[f'B{current_row}'] = 'Photos'
         current_row += 1
@@ -559,6 +629,34 @@ class MatrixGenerator:
 
         return str(value)
 
+    def _norm_num(self, v: Any) -> str:
+        """
+        Normaliza números para Excel:
+        - 46.0 -> 46
+        - 1,0 -> 1
+        - 10314.00 -> 10314
+        Mantiene decimales reales (3,26 se queda 3,26)
+        """
+        if v is None:
+            return ""
+        s = str(v).strip()
+        if not s or s.upper() == "NOT FOUND":
+            return ""
+
+        # cambia punto a coma (pero si ya viene con coma, ok)
+        s = s.replace(".", ",")
+
+        # si es número con ,000... lo deja sin parte decimal
+        if re.fullmatch(r"\d+,0+", s):
+            return s.split(",")[0]
+
+        # si es número con decimales tipo 10314,00 -> 10314
+        if re.fullmatch(r"\d+,\d+", s):
+            entero, dec = s.split(",", 1)
+            if set(dec) == {"0"}:
+                return entero
+
+        return s
 
     def _is_valid_cell_value(self, v: Any, min_len: int = 2) -> bool:
         if v is None:
@@ -611,3 +709,10 @@ class MatrixGenerator:
             return contr_ae
         else:
             return ""
+
+    def to_010_020(self, act_code: str) -> str:
+        if not act_code or act_code == "NOT FOUND":
+            return ""
+        m = re.search(r"(010|020)", str(act_code))
+        return m.group(1) if m else ""
+

@@ -181,7 +181,15 @@ class DniParser(BaseDocumentParser):
     def _is_garbage_name(self, name: str) -> bool:
         if not name or name == "NOT FOUND":
             return True
-        up = name.upper()
+        up = name.upper().strip()
+
+        # ✅ Bloquea tokens tipo IDESP / IDESPCET... (ruido OCR / MRZ / ID)
+        if up.startswith(("IDESP", "IDES")) or "IDESP" in up or "IDES" in up:
+            return True
+
+        # ✅ NUEVO: si tiene demasiados dígitos, es ruido (MRZ/ID tokens)
+        if sum(c.isdigit() for c in up) >= 6:
+            return True
 
         if re.search(r"\b(APELLIDOS|NOMBRE|DOCUMENTO|NIF|DNI|SEXO|NACIONALIDAD|FECHA|CADUCIDAD)\b", up):
             return True
@@ -195,3 +203,4 @@ class DniParser(BaseDocumentParser):
             return True
 
         return False
+
