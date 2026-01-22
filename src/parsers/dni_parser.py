@@ -2,9 +2,10 @@
 Parser for DNI documents
 
 ✅ Robust against OCR noise:
-- misread digits (O->0, I/L->1)
+- misread digits (O->0)
+- I/L confusion ONLY inside the 8-digit numeric part (never touch final letter)
 - last letter misread (G->6)
-- MRZ parsing fallback (lines with '<')
+- MRZ / IDESP fallback (embedded DNI like IDESP...13103004L)
 """
 
 from .base_parser import BaseDocumentParser
@@ -23,11 +24,21 @@ class DniParser(BaseDocumentParser):
             "name": self._extract_name(),
         }
 
-    def _normalize_digits(self, t: str) -> str:
+    # ------------------------
+    # Helpers
+    # ------------------------
+
+    def _normalize_common(self, t: str) -> str:
+        """Upper + remove separators. IMPORTANT: do NOT replace L->1 here."""
         t = (t or "").upper()
         t = t.replace(" ", "").replace("-", "").replace(".", "").replace(":", "")
-        t = t.replace("O", "0").replace("I", "1").replace("L", "1")
         return t
+
+    def _normalize_numeric_part(self, eight: str) -> str:
+        """Normalize only the numeric part (8 chars) allowing OCR swaps."""
+        eight = (eight or "").upper()
+        eight = eight.replace("O", "0").replace("I", "1").replace("L", "1")
+        return eight
 
     def _is_valid_spanish_dni(self, dni: str) -> bool:
         dni = (dni or "").strip().upper().replace(" ", "")
@@ -37,28 +48,59 @@ class DniParser(BaseDocumentParser):
         num = int(dni[:8])
         return dni[-1] == letters[num % 23]
 
+    # ------------------------
+    # DNI extractor
+    # ------------------------
+
     def _extract_dni_number(self) -> str:
-        """Extract DNI/NIF number (8 digits + letter). Accepts OCR '6' for 'G'."""
+        """
+        Goals:
+        - Catch clean DNI anywhere: 13103004L (even inside IDESP...13103004L)
+        - OCR tolerant: O/I/L may appear inside the 8 digits only
+        - Last letter: accept '6' as 'G' (common OCR)
+        - Never convert final 'L' -> '1' (that was the bug)
+        """
         if not self.text:
             return "NOT FOUND"
 
-        t = self._normalize_digits(self.text)
+        raw = (self.text or "").upper()
 
-        # Busca TODOS los candidatos y devuelve el primero válido
-        for m in re.finditer(r"(\d{8}[A-Z6])", t):
-            cand = m.group(1)
+        # 1) Fast path: find any clean DNI (works for embedded IDESP...13103004L)
+        # NOTE: this does not remove chars, so it can match inside long tokens.
+        m = re.search(r"(\d{8}[A-Z])", raw)
+        if m and self._is_valid_spanish_dni(m.group(1)):
+            return m.group(1)
 
-            # Caso OCR típico: última letra "G" -> "6"
-            if cand[-1] == "6":
-                cand_g = cand[:-1] + "G"
-                if self._is_valid_spanish_dni(cand_g):
-                    return cand_g
+        # 2) OCR-tolerant scan:
+        # - Numeric part may contain O/I/L
+        # - Last char may be A-Z or 6 (G) or I/L/1 (noise)
+        t = self._normalize_common(raw)
 
-            if self._is_valid_spanish_dni(cand):
-                return cand
+        for m in re.finditer(r"([0-9OIL]{8})([A-Z6IL1])", t):
+            raw_num, raw_last = m.groups()
+
+            num = self._normalize_numeric_part(raw_num)
+
+            # last letter candidates (keep letters; map 6->G)
+            last_candidates = []
+            if raw_last == "6":
+                last_candidates = ["G"]
+            elif raw_last in {"1", "I", "L"}:
+                # Sometimes OCR puts 1 instead of I/L for the final letter.
+                last_candidates = ["I", "L"]
+            else:
+                last_candidates = [raw_last]
+
+            for last in last_candidates:
+                cand = f"{num}{last}"
+                if self._is_valid_spanish_dni(cand):
+                    return cand
 
         return "NOT FOUND"
 
+    # ------------------------
+    # Name extraction (unchanged)
+    # ------------------------
 
     def _extract_name_from_mrz(self) -> str:
         """
@@ -73,7 +115,6 @@ class DniParser(BaseDocumentParser):
         if not mrz_lines:
             return "NOT FOUND"
 
-        # Preferimos la línea de nombre: empieza por LETRA y contiene '<<'
         candidates = [ln for ln in mrz_lines if "<<" in ln and re.match(r"^[A-Z]", ln)]
         if not candidates:
             candidates = [ln for ln in mrz_lines if "<<" in ln]
@@ -81,7 +122,6 @@ class DniParser(BaseDocumentParser):
         if not candidates:
             return "NOT FOUND"
 
-        # normalmente la de nombre es la más larga/“limpia”
         line = max(candidates, key=len)
 
         parts = line.split("<<", 1)
@@ -91,18 +131,14 @@ class DniParser(BaseDocumentParser):
 
         return full if len(full) >= 6 else "NOT FOUND"
 
-
     def _extract_name(self) -> str:
         if not self.text:
             return "NOT FOUND"
 
-        # 1) MRZ primero (en tus OCR suele ser lo único "limpio")
         mrz_name = self._extract_name_from_mrz()
         if mrz_name != "NOT FOUND":
-            # el MRZ a veces trae el nombre truncado, pero al menos apellidos salen bien
             return mrz_name
 
-        # 2) fallback a tus heurísticas
         t = self.text.strip()
 
         patterns = [
@@ -131,7 +167,6 @@ class DniParser(BaseDocumentParser):
 
             return name if not self._is_garbage_name(name) else "NOT FOUND"
 
-        # Line heuristics
         lines = [self._clean_name(ln) for ln in t.splitlines() if ln.strip()]
         caps_lines = [ln for ln in lines if re.fullmatch(r"[A-ZÑÁÉÍÓÚ\s]{10,}", ln)]
         if caps_lines:

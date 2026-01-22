@@ -110,11 +110,38 @@ class ContratoParser(BaseDocumentParser):
     def _find_dni(self, txt: str) -> str:
         if not txt:
             return "NOT FOUND"
+
         t = txt.upper()
         t = t.replace(" ", "").replace("-", "").replace(".", "").replace(":", "")
-        t = t.replace("O", "0").replace("I", "1").replace("L", "1")
+
+        # Buscar candidatos incluso embebidos en tokens (IDESP...13103004L)
+        for m in re.finditer(r"([0-9OIL]{8})([A-Z6IL1])", t):
+            raw_num, raw_last = m.groups()
+
+            # Normaliza SOLO los 8 "dígitos"
+            num = raw_num.replace("O", "0").replace("I", "1").replace("L", "1")
+
+            # La letra final se conserva; sólo tratamos casos OCR típicos
+            if raw_last == "6":
+                last_candidates = ["G"]
+            elif raw_last in {"1", "I", "L"}:
+                # OCR puede confundir I/L con 1 en la última letra
+                last_candidates = ["I", "L"]
+            else:
+                last_candidates = [raw_last]
+
+            for last in last_candidates:
+                cand = f"{num}{last}"
+                if self._is_valid_spanish_dni(cand):
+                    return cand
+
+        # Fallback: si hay uno limpio directo
         m = re.search(r"(\d{8}[A-Z])", t)
-        return m.group(1) if m else "NOT FOUND"
+        if m and self._is_valid_spanish_dni(m.group(1)):
+            return m.group(1)
+
+        return "NOT FOUND"
+
 
     def _find_cif(self, txt: str) -> str:
         if not txt:
@@ -420,45 +447,61 @@ class ContratoParser(BaseDocumentParser):
         return "NOT FOUND"
 
     def _extract_cedente_dni(self) -> str:
+        """
+        Cedente DNI extractor.
+
+        Fixes OCR bug where DNIs ending with 'L' or 'I' were being broken by
+        globally converting L/I -> 1. We now:
+        - capture candidates allowing OCR noise
+        - normalize ONLY the 8-digit portion
+        - keep/resolve the final letter properly
+        - validate via checksum
+        """
         txt = getattr(self, "_cedente_txt", "") or self.text
         txt = self._normalize(txt)
 
-        # ✅ extractor directo “De una parte ... con DNI XXXXX”
+        # Helper: take a captured candidate and run it through the robust finder
+        def _from_candidate(candidate: str) -> str:
+            val = self._find_dni(candidate)
+            return val if val != "NOT FOUND" else "NOT FOUND"
+
+        # ✅ 1) Direct pattern “De una parte ... con DNI XXXXX”
         m = re.search(
-            r"De\s+una\s+parte.*?\bDNI\s*([0-9OIlL]{7,8}\s*[A-Z])",
+            r"De\s+una\s+parte.*?\bDNI\s*([0-9OIlL]{8}\s*[A-Z6IL1])",
             txt,
             re.IGNORECASE | re.DOTALL,
         )
         if m:
-            cand = m.group(1).upper().replace(" ", "")
-            cand = cand.replace("O", "0").replace("I", "1").replace("L", "1")
-            if self._is_valid_spanish_dni(cand):
-                return cand
+            val = _from_candidate(m.group(1))
+            if val != "NOT FOUND":
+                return val
 
-        # tu lógica previa
+        # ✅ 2) “mayor de edad, con DNI …”
         m = re.search(
-            r"mayor\s+de\s+edad,\s*con\s+DNI[:\s]*([0-9OIlL]{7,8}\s*[A-Z])",
+            r"mayor\s+de\s+edad,\s*con\s+DNI[:\s]*([0-9OIlL]{8}\s*[A-Z6IL1])",
+            txt,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if m:
+            val = _from_candidate(m.group(1))
+            if val != "NOT FOUND":
+                return val
+
+        # ✅ 3) Generic “DNI: …”
+        m = re.search(
+            r"\bDNI[:\s]*([0-9OIlL]{8}\s*[A-Z6IL1])\b",
             txt,
             re.IGNORECASE,
         )
         if m:
-            cand = m.group(1).upper().replace(" ", "")
-            cand = cand.replace("O", "0").replace("I", "1").replace("L", "1")
-            if self._is_valid_spanish_dni(cand):
-                return cand
+            val = _from_candidate(m.group(1))
+            if val != "NOT FOUND":
+                return val
 
-        m = re.search(r"\bDNI[:\s]*([0-9OIlL]{7,8}\s*[A-Z])\b", txt, re.IGNORECASE)
-        if m:
-            cand = m.group(1).upper().replace(" ", "")
-            cand = cand.replace("O", "0").replace("I", "1").replace("L", "1")
-            if self._is_valid_spanish_dni(cand):
-                return cand
+        # ✅ 4) Fallback: scan the whole text (also catches IDESP…13103004L)
+        val = self._find_dni(txt)
+        return val if val != "NOT FOUND" else "NOT FOUND"
 
-        cand = self._find_dni(txt)
-        if cand != "NOT FOUND" and self._is_valid_spanish_dni(cand):
-            return cand
-
-        return "NOT FOUND"
 
     def _extract_cedente_address(self) -> str:
         """
