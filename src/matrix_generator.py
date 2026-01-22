@@ -8,6 +8,9 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import re
+import os
+import fitz
+
 
 from src.parsers.contrato_parser import ContratoParser
 from src.parsers.certificado_parser import CertificadoParser
@@ -18,6 +21,7 @@ from src.parsers.registro_parser import RegistroParser
 from src.parsers.dni_parser import DniParser
 from src.parsers.calculo_parser import CalculoParser
 from src.parsers.ficha_parser import FichaParser
+from openpyxl.drawing.image import Image as XLImage
 
 
 
@@ -529,9 +533,25 @@ class MatrixGenerator:
 
         current_row += 1
 
-        # Photos
+        # Photos (firma del Cedente desde el CONTRATO)
         ws[f'B{current_row}'] = 'Photos'
+
+        # Dale altura a la fila para que quepa la imagen (ajusta si hace falta)
+        ws.row_dimensions[current_row].height = 110
+
+        contrato_pdf = str(self.file_mapping.get("CONTRATO", ""))
+        if contrato_pdf.lower().endswith(".pdf") and os.path.exists(contrato_pdf):
+            img_path = "tmp/contrato_firma_cedente.png"
+            try:
+                self._extract_cedente_signature(contrato_pdf, img_path)
+                # Columna C = CONTRATO (como el template)
+                self._insert_image(ws, f"C{current_row}", img_path, width_px=260)
+                ws[f'C{current_row}'] = ""  # por si acaso, para que no se mezcle texto
+            except Exception as e:
+                ws[f'C{current_row}'] = f"Signature extract error: {e}"
+
         current_row += 1
+
         
         # ==================== INSTALLER SECTION ====================
         ws[f'A{current_row}'] = 'INSTALLER'
@@ -716,3 +736,22 @@ class MatrixGenerator:
         m = re.search(r"(010|020)", str(act_code))
         return m.group(1) if m else ""
 
+    def extract_cedente_signature(pdf_path: str, out_path: str) -> str:
+        doc = fitz.open(pdf_path)
+        page = doc[5]  # pág 6/7 (idx 5)
+
+        w, h = page.rect.width, page.rect.height
+
+        # Tu clip "perfecto" (ajusta si algún contrato cambia)
+        x0 = w * 0.05
+        x1 = w * 0.50
+        y0 = h * 0.68
+        y1 = h * 0.90
+
+        clip = fitz.Rect(x0, y0, x1, y1)
+
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        zoom = 3
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
+        pix.save(out_path)
+        return out_path

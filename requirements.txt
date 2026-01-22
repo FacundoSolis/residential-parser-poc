@@ -4,3 +4,5 @@ openpyxl>=3.0.0
 Pillow>=9.0.0
 pytesseract
 pdf2image
+pymupdf==1.26.7
+openpyxl==3.1.5
