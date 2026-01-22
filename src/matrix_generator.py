@@ -541,7 +541,9 @@ class MatrixGenerator:
 
         contrato_pdf = str(self.file_mapping.get("CONTRATO", ""))
         if contrato_pdf.lower().endswith(".pdf") and os.path.exists(contrato_pdf):
-            img_path = "tmp/contrato_firma_cedente.png"
+            tmp_dir = Path(output_path).parent / "_tmp_assets"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            img_path = str(tmp_dir / "contrato_firma_cedente.png")
             try:
                 self._extract_cedente_signature(contrato_pdf, img_path)
                 # Columna C = CONTRATO (como el template)
@@ -552,7 +554,7 @@ class MatrixGenerator:
 
         current_row += 1
 
-        
+                
         # ==================== INSTALLER SECTION ====================
         ws[f'A{current_row}'] = 'INSTALLER'
         ws[f'A{current_row}'].font = section_font
@@ -649,6 +651,14 @@ class MatrixGenerator:
 
         return str(value)
 
+    def _insert_image(self, ws, cell: str, img_path: str, width_px: int = 280):
+        img = XLImage(img_path)
+        if img.width:
+            ratio = width_px / img.width
+            img.width = int(img.width * ratio)
+            img.height = int(img.height * ratio)
+        ws.add_image(img, cell)
+
     def _norm_num(self, v: Any) -> str:
         """
         Normaliza números para Excel:
@@ -736,13 +746,13 @@ class MatrixGenerator:
         m = re.search(r"(010|020)", str(act_code))
         return m.group(1) if m else ""
 
-    def extract_cedente_signature(pdf_path: str, out_path: str) -> str:
+    def _extract_cedente_signature(self, pdf_path: str, out_path: str) -> str:
         doc = fitz.open(pdf_path)
         page = doc[5]  # pág 6/7 (idx 5)
 
         w, h = page.rect.width, page.rect.height
 
-        # Tu clip "perfecto" (ajusta si algún contrato cambia)
+        # Tu clip "perfecto"
         x0 = w * 0.05
         x1 = w * 0.50
         y0 = h * 0.68
@@ -755,3 +765,4 @@ class MatrixGenerator:
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
         pix.save(out_path)
         return out_path
+
