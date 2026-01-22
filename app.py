@@ -9,8 +9,11 @@ import shutil
 from pathlib import Path
 import sys
 
-# Add src to path
-sys.path.append(str(Path(__file__).parent))
+# Add both root and src to path for imports
+root_path = str(Path(__file__).parent)
+src_path = str(Path(__file__).parent / 'src')
+sys.path.insert(0, root_path)
+sys.path.insert(0, src_path)
 
 from src.matrix_generator import MatrixGenerator
 

@@ -12,15 +12,15 @@ import os
 import fitz
 
 
-from src.parsers.contrato_parser import ContratoParser
-from src.parsers.certificado_parser import CertificadoParser
-from src.parsers.factura_parser import FacturaParser
-from src.parsers.declaracion_parser import DeclaracionParser
-from src.parsers.cee_parser import CeeParser
-from src.parsers.registro_parser import RegistroParser
-from src.parsers.dni_parser import DniParser
-from src.parsers.calculo_parser import CalculoParser
-from src.parsers.ficha_parser import FichaParser
+from parsers.contrato_parser import ContratoParser
+from parsers.certificado_parser import CertificadoParser
+from parsers.factura_parser import FacturaParser
+from parsers.declaracion_parser import DeclaracionParser
+from parsers.cee_parser import CeeParser
+from parsers.registro_parser import RegistroParser
+from parsers.dni_parser import DniParser
+from parsers.calculo_parser import CalculoParser
+from parsers.ficha_parser import FichaParser
 from openpyxl.drawing.image import Image as XLImage
 
 
