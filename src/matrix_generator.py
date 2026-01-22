@@ -698,6 +698,16 @@ class MatrixGenerator:
             return False
         if len(s) < min_len:
             return False
+
+        # --- NEW: clean OCR garbage prefixes like “! or similar ---
+        # If it starts with weird punctuation/symbols, discard it
+        if re.match(r'^[“"\'`´!¡¿\W]{1,3}\s*[A-ZÁÉÍÓÚÑ]', s):
+            return False
+        # Also discard specific frequent combos
+        if s[:2] in {"“!", "\"!", "’!", "‘!"}:
+            return False
+        # ---------------------------------------------------------
+
         # basura típica OCR
         if s.upper() in {"C", "CL", "CALLE", "AV", "S/N"}:
             return False
@@ -707,6 +717,7 @@ class MatrixGenerator:
         if s.upper().endswith(" MANEC"):
             return False
         return True
+
 
     def _pick_best(self, *candidates: Any, min_len: int = 2) -> str:
         for c in candidates:
