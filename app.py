@@ -1,6 +1,8 @@
 """
 Residential Energy Certificate Parser - Web Interface
 """
+APP_VERSION = "2026-01-22-photos-v3"
+st.sidebar.write("Version:", APP_VERSION)
 
 import streamlit as st
 import zipfile
