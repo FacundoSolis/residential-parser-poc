@@ -9,13 +9,11 @@ import shutil
 from pathlib import Path
 import sys
 
-# Add both root and src to path for imports
-root_path = str(Path(__file__).parent)
+# Add src to path for imports
 src_path = str(Path(__file__).parent / 'src')
-sys.path.insert(0, root_path)
 sys.path.insert(0, src_path)
 
-from src.matrix_generator import MatrixGenerator
+from matrix_generator import MatrixGenerator
 
 st.set_page_config(
     page_title="Residential Parser",
