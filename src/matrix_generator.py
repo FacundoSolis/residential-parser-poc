@@ -12,15 +12,15 @@ import os
 import fitz
 
 
-from parsers.contrato_parser import ContratoParser
-from parsers.certificado_parser import CertificadoParser
-from parsers.factura_parser import FacturaParser
-from parsers.declaracion_parser import DeclaracionParser
-from parsers.cee_parser import CeeParser
-from parsers.registro_parser import RegistroParser
-from parsers.dni_parser import DniParser
-from parsers.calculo_parser import CalculoParser
-from parsers.ficha_parser import FichaParser
+from .parsers.contrato_parser import ContratoParser
+from .parsers.certificado_parser import CertificadoParser
+from .parsers.factura_parser import FacturaParser
+from .parsers.declaracion_parser import DeclaracionParser
+from .parsers.cee_parser import CeeParser
+from .parsers.registro_parser import RegistroParser
+from .parsers.dni_parser import DniParser
+from .parsers.calculo_parser import CalculoParser
+from .parsers.ficha_parser import FichaParser
 from openpyxl.drawing.image import Image as XLImage
 
 
@@ -367,7 +367,6 @@ class MatrixGenerator:
 
         current_row += 1
 
-        
         # Start date
         ws[f'B{current_row}'] = 'Start date'
 
@@ -743,21 +742,26 @@ class MatrixGenerator:
         if len(s) < min_len:
             return False
 
-        # --- NEW: clean OCR garbage prefixes like “! or similar ---
-        # If it starts with weird punctuation/symbols, discard it
-        if re.match(r'^[“"\'`´!¡¿\W]{1,3}\s*[A-ZÁÉÍÓÚÑ]', s):
+        # --- NEW: clean OCR garbage prefixes like "! or similar ---
+        if re.match(r'^[""\'`´!¡¿\W]{1,3}\s*[A-ZÁÉÍÓÚÑ]', s):
+            print(f"🐛 REJECTED by prefix filter: {s}")
             return False
-        # Also discard specific frequent combos
+        
         if s[:2] in {"“!", "\"!", "’!", "‘!"}:
+            print(f"🐛 REJECTED by combo filter: {s}")
             return False
-        # ---------------------------------------------------------
 
         # basura típica OCR
         if s.upper() in {"C", "CL", "CALLE", "AV", "S/N"}:
             return False
         # evita MRZ basura típica del DNI
+        # evita MRZ basura típica del DNI (pero NO catastrales válidos)
         if re.fullmatch(r"[A-Z0-9<]{10,}", s.upper()):
-            return False
+            # ✅ Excepción: Si tiene 14+ chars Y mezcla números/letras, probablemente es catastral
+            if len(s) >= 14 and re.search(r'\d', s) and re.search(r'[A-Z]', s.upper()):
+                pass  # Es catastral válido, no rechazar
+            else:
+                return False
         if s.upper().endswith(" MANEC"):
             return False
         return True
