@@ -13,10 +13,10 @@ from pathlib import Path
 import sys
 
 # Add src to path for imports
-src_path = str(Path(__file__).parent / 'src')
-sys.path.insert(0, src_path)
+# src_path = str(Path(__file__).parent / 'src')
+# sys.path.insert(0, src_path)
 
-from matrix_generator import MatrixGenerator
+from src.matrix_generator import MatrixGenerator
 
 st.set_page_config(
     page_title="Residential Parser",
