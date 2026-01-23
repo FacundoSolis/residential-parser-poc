@@ -75,6 +75,30 @@ if 'FICHA' in mg.parsed_data:
 else:
     print("  ❌ NOT FOUND")
 
+# --- DNI ---
+print("\n🔹 DNI:")
+if 'DNI' in mg.parsed_data:
+    dni = mg.parsed_data['DNI']
+    print(f"  dni_number: '{dni.get('dni_number', '')}'")
+    print(f"  name: '{dni.get('name', '')}'")
+else:
+    print("  ❌ NOT FOUND")
+
+# --- NAME SOURCES ---
+print("\n🔹 NAME SOURCES:")
+contr_name = mg._get_value('CONTRATO', 'homeowner_name')
+decl_name = mg._clean_ocr_text(mg._get_value('DECLARACION', 'homeowner_name'))
+fact_name = mg._get_value('FACTURA', 'homeowner_name')
+dni_name = mg._get_value('DNI', 'name')
+calc_name = mg._get_value('CALCULO', 'client_name')
+print(f"  CONTRATO.homeowner_name: '{contr_name}'")
+print(f"  DECLARACION.homeowner_name: '{decl_name}'")
+print(f"  FACTURA.homeowner_name: '{fact_name}'")
+print(f"  DNI.name: '{dni_name}'")
+print(f"  CALCULO.client_name: '{calc_name}'")
+best_name = mg._pick_best(fact_name, contr_name, decl_name, calc_name, min_len=6)
+print(f"  BEST NAME: '{best_name}'")
+
 print("\n" + "="*80)
 print("🧪 TESTING _pick_best for Lifespan")
 print("="*80)

@@ -66,27 +66,21 @@ class DniParser(BaseDocumentParser):
         raw = (self.text or "").upper()
 
         # 1) Fast path: find any clean DNI (works for embedded IDESP...13103004L)
-        # NOTE: this does not remove chars, so it can match inside long tokens.
         m = re.search(r"(\d{8}[A-Z])", raw)
         if m and self._is_valid_spanish_dni(m.group(1)):
             return m.group(1)
 
-        # 2) OCR-tolerant scan:
-        # - Numeric part may contain O/I/L
-        # - Last char may be A-Z or 6 (G) or I/L/1 (noise)
+        # 2) OCR-tolerant scan
         t = self._normalize_common(raw)
 
         for m in re.finditer(r"([0-9OIL]{8})([A-Z6IL1])", t):
             raw_num, raw_last = m.groups()
-
             num = self._normalize_numeric_part(raw_num)
 
-            # last letter candidates (keep letters; map 6->G)
             last_candidates = []
             if raw_last == "6":
                 last_candidates = ["G"]
             elif raw_last in {"1", "I", "L"}:
-                # Sometimes OCR puts 1 instead of I/L for the final letter.
                 last_candidates = ["I", "L"]
             else:
                 last_candidates = [raw_last]
@@ -99,7 +93,7 @@ class DniParser(BaseDocumentParser):
         return "NOT FOUND"
 
     # ------------------------
-    # Name extraction (unchanged)
+    # Name extraction
     # ------------------------
 
     def _extract_name_from_mrz(self) -> str:
@@ -123,26 +117,38 @@ class DniParser(BaseDocumentParser):
             return "NOT FOUND"
 
         line = max(candidates, key=len)
+        
+        # ✅ Rechazar líneas que parecen ID/IDESP/CET basura
+        if "IDESP" in line or "IDES" in line or re.search(r"\d{8,}", line):
+            return "NOT FOUND"
 
         parts = line.split("<<", 1)
         surname = parts[0].replace("<", " ").strip()
         given = parts[1].replace("<", " ").strip() if len(parts) > 1 else ""
         full = re.sub(r"\s+", " ", f"{surname} {given}").strip()
 
-        return full if len(full) >= 6 else "NOT FOUND"
+        # ✅ Validar antes de devolver
+        if len(full) < 6 or self._is_garbage_name(full):
+            return "NOT FOUND"
+
+        return full
 
     def _extract_name(self) -> str:
         if not self.text:
             return "NOT FOUND"
 
-        
+        print(f"🐛 DNI text length: {len(self.text)}")
+        print(f"🐛 DNI text preview: {self.text[:200]}...")
+
+        # 1) Intentar MRZ (validado internamente)
         mrz_name = self._extract_name_from_mrz()
-        if mrz_name != "NOT FOUND" and not self._is_garbage_name(mrz_name):
+        print(f"🐛 MRZ name: '{mrz_name}'")
+        if mrz_name != "NOT FOUND":
             return mrz_name
 
         t = self.text.strip()
 
-      
+        # 2) Patrones estructurados
         patterns = [
             r"APELLIDOS\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{4,})\s+NOMBRE\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})",
             r"NOMBRE\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})\s+APELLIDOS\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{4,})",
@@ -150,35 +156,42 @@ class DniParser(BaseDocumentParser):
             r"1\s*APELLIDO\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})\s+2\s*APELLIDO\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})\s+NOMBRE\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})",
         ]
 
-        for p in patterns:
+        for i, p in enumerate(patterns):
             m = re.search(p, t, re.IGNORECASE)
-            if not m:
-                continue
+            if m:
+                print(f"🐛 Pattern {i} matched: {m.groups()}")
+                if len(m.groups()) == 1:
+                    name = self._clean_name(m.group(1))
+                elif len(m.groups()) == 2:
+                    a = self._clean_name(m.group(1))
+                    b = self._clean_name(m.group(2))
+                    name = f"{b} {a}".strip() if p.startswith("NOMBRE") else f"{a} {b}".strip()
+                else:
+                    a1 = self._clean_name(m.group(1))
+                    a2 = self._clean_name(m.group(2))
+                    nom = self._clean_name(m.group(3))
+                    name = f"{a1} {a2} {nom}".strip()
 
-            if len(m.groups()) == 1:
-                name = self._clean_name(m.group(1))
-            elif len(m.groups()) == 2:
-                a = self._clean_name(m.group(1))
-                b = self._clean_name(m.group(2))
-                name = f"{b} {a}".strip() if p.startswith("NOMBRE") else f"{a} {b}".strip()
-            else:
-                a1 = self._clean_name(m.group(1))
-                a2 = self._clean_name(m.group(2))
-                nom = self._clean_name(m.group(3))
-                name = f"{a1} {a2} {nom}".strip()
+                print(f"🐛 Extracted name: '{name}'")
+                # ✅ Validar antes de devolver
+                if not self._is_garbage_name(name):
+                    return name
+                else:
+                    print(f"🐛 Name rejected as garbage: '{name}'")
 
-          
-            if not self._is_garbage_name(name):
-                return name
-
-    
+        # 3) Fallback: líneas en mayúsculas
         lines = [self._clean_name(ln) for ln in t.splitlines() if ln.strip()]
+        print(f"🐛 Lines: {lines}")
         caps_lines = [ln for ln in lines if re.fullmatch(r"[A-ZÑÁÉÍÓÚ\s]{10,}", ln)]
+        print(f"🐛 Caps lines: {caps_lines}")
         if caps_lines:
             cand = max(caps_lines, key=len)
-        
+            print(f"🐛 Fallback candidate: '{cand}'")
+            # ✅ Validar antes de devolver
             if not self._is_garbage_name(cand):
                 return cand
+            else:
+                print(f"🐛 Fallback rejected: '{cand}'")
 
         return "NOT FOUND"
 
@@ -188,13 +201,14 @@ class DniParser(BaseDocumentParser):
     def _is_garbage_name(self, name: str) -> bool:
         if not name or name == "NOT FOUND":
             return True
+        
         up = name.upper().strip()
 
         # ✅ Bloquea tokens tipo IDESP / IDESPCET... (ruido OCR / MRZ / ID)
         if up.startswith(("IDESP", "IDES")) or "IDESP" in up or "IDES" in up:
             return True
 
-        # ✅ NUEVO: si tiene demasiados dígitos, es ruido (MRZ/ID tokens)
+        # ✅ Si tiene demasiados dígitos, es ruido (MRZ/ID tokens)
         if sum(c.isdigit() for c in up) >= 6:
             return True
 
@@ -210,4 +224,3 @@ class DniParser(BaseDocumentParser):
             return True
 
         return False
-
