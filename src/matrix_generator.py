@@ -336,6 +336,7 @@ class MatrixGenerator:
             min_len=3
         )
         ws[f'C{current_row}'] = c_code
+        ws[f'D{current_row}'] = self.to_010_020(self._get_value('FICHA', 'act_code'))  
         ws[f'E{current_row}'] = self.to_010_020(self._get_value('DECLARACION', 'act_code'))
         ws[f'H{current_row}'] = self.to_010_020(self._get_value('CERTIFICADO', 'act_code'))
         ws[f'L{current_row}'] = self.to_010_020(self._get_value('CALCULO', 'act_code'))
@@ -369,12 +370,20 @@ class MatrixGenerator:
         
         # Start date
         ws[f'B{current_row}'] = 'Start date'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'start_date')
+
+        start = self._get_value('CERTIFICADO', 'start_date')
+        ws[f'C{current_row}'] = start 
+        ws[f'D{current_row}'] = start 
+        ws[f'H{current_row}'] = start
         current_row += 1
         
         # Finish date
         ws[f'B{current_row}'] = 'Finish date'
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'finish_date')
+
+        finish = self._get_value('CERTIFICADO', 'finish_date')
+        ws[f'C{current_row}'] = finish
+        ws[f'D{current_row}'] = finish
+        ws[f'H{current_row}'] = finish
         current_row += 1
         
         # Address (ACT)
@@ -403,7 +412,7 @@ class MatrixGenerator:
         cee_cat   = self._get_value('CEE', 'catastral_ref')
         reg_cat   = self._get_value('REGISTRO', 'catastral_ref')
 
-        ws[f'C{current_row}'] = self._pick_best(cert_cat, contr_cat, cee_cat, reg_cat, decl_cat, min_len=10)
+        ws[f'C{current_row}'] = self._pick_best(cert_cat, cee_cat, reg_cat, contr_cat, decl_cat, min_len=10)
 
         ws[f'E{current_row}'] = decl_cat
         ws[f'H{current_row}'] = cert_cat
@@ -428,7 +437,12 @@ class MatrixGenerator:
         
         # Lifespan
         ws[f'B{current_row}'] = 'Lifespan (años)'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'lifespan')
+        life = self._pick_best(
+            self._get_value('CERTIFICADO', 'lifespan'),
+            self._get_value('CONTRATO', 'lifespan'),
+            min_len=1
+        )
+        ws[f'C{current_row}'] = life 
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'lifespan')
         current_row += 1
         
@@ -480,6 +494,16 @@ class MatrixGenerator:
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'surface'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 's'))
         current_row += 1
+
+        # b (coeficiente superficie - va ANTES de Climatic zone)
+        ws[f'B{current_row}'] = 'b'
+        ws[f'D{current_row}'] = self._pick_best(
+            self._get_value('CERTIFICADO', 'b'),
+            self._get_value('CALCULO', 'calculation_methodology'),
+        )
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'b')
+        ws[f'L{current_row}'] = self._get_value('CALCULO', 'calculation_methodology')
+        current_row += 1
         
         # Climatic zone
         ws[f'B{current_row}'] = 'Climatic zone'
@@ -503,15 +527,28 @@ class MatrixGenerator:
 
         # Isolation Thickness
         ws[f'B{current_row}'] = 'Isolation Thickness'
-        ws[f'D{current_row}'] = self._pick_best(
-            self._get_value('FICHA', 'isolation_thickness'),
+
+        iso = self._pick_best(
             self._get_value('CERTIFICADO', 'isolation_thickness'),
+            self._get_value('FICHA', 'isolation_thickness'),
+            min_len=2
         )
+        ws[f'C{current_row}'] = iso
+        ws[f'D{current_row}'] = iso
+        ws[f'F{current_row}'] = iso  # ✅ AÑADIR FACTURA
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_thickness')
         current_row += 1
         
-        # Surface coefficient (0,83 is the new surface coefficient)
+        # Surface coefficient (0,83 del CALCULO)
         ws[f'B{current_row}'] = 'Surface coefficient'
+
+        # D y L: valor de CALCULO (0,83)
+        calc_surf_coeff = self._get_value('CALCULO', 'calculation_methodology')
+        ws[f'D{current_row}'] = calc_surf_coeff
+        ws[f'H{current_row}'] = ""  # CERTIFICADO no tiene surface coefficient separado
+        ws[f'L{current_row}'] = calc_surf_coeff
+
+        current_row += 1
 
         # D: queremos mostrar el "coeficiente final usado" (prioriza CALCULO 0,83)
         ws[f'D{current_row}'] = self._pick_best(
@@ -530,13 +567,13 @@ class MatrixGenerator:
 
 
         # Calculation methodology (R*t)
-        ws[f'B{current_row}'] = 'Calculation methodology (R*t)'
+        ws[f'B{current_row}'] = 'Calculation methodology (R*t)'# Calculation methodology (R*t) - SOLO el R*t del CERTIFICADO
 
         rt = self._get_value('CERTIFICADO', 'calculation_methodology')  # 0,75
 
-        ws[f'D{current_row}'] = self._norm_num(rt)     # para que D no vaya vacía
+        ws[f'D{current_row}'] = self._norm_num(rt)
         ws[f'H{current_row}'] = self._norm_num(rt)
-        ws[f'L{current_row}'] = ""     # no duplicar 0,83 aquí
+        ws[f'L{current_row}'] = ""  # NO poner 0,83 aquí
 
         current_row += 1
 
