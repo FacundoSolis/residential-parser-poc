@@ -233,7 +233,7 @@ class MatrixGenerator:
         ws[f'B{current_row}'] = 'Name'
 
         contr_name = self._get_value('CONTRATO', 'homeowner_name')
-        decl_name  = self._get_value('DECLARACION', 'homeowner_name')
+        decl_name = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_name'))
         fact_name  = self._get_value('FACTURA', 'homeowner_name')
         dni_name   = self._get_value('DNI', 'name')
         calc_name  = self._get_value('CALCULO', 'client_name')
@@ -279,7 +279,7 @@ class MatrixGenerator:
 
         contr_addr = self._get_value('CONTRATO', 'homeowner_address')
         contr_loc  = self._get_value('CONTRATO', 'location')  # a veces viene bien
-        decl_addr  = self._get_value('DECLARACION', 'homeowner_address')
+        decl_addr = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_address'))
         fact_addr  = self._get_value('FACTURA', 'homeowner_address')
         cert_addr  = self._get_value('CERTIFICADO', 'address')
 
@@ -328,7 +328,14 @@ class MatrixGenerator:
         # Code
         ws[f'B{current_row}'] = 'Code (010/020)'
 
-        ws[f'C{current_row}'] = self.to_010_020(self._get_value('CONTRATO', 'act_code'))
+        c_code = self._pick_best(
+            self.to_010_020(self._get_value('CONTRATO', 'act_code')),
+            self.to_010_020(self._get_value('DECLARACION', 'act_code')),
+            self.to_010_020(self._get_value('CERTIFICADO', 'act_code')),
+            self.to_010_020(self._get_value('CALCULO', 'act_code')),
+            min_len=3
+        )
+        ws[f'C{current_row}'] = c_code
         ws[f'E{current_row}'] = self.to_010_020(self._get_value('DECLARACION', 'act_code'))
         ws[f'H{current_row}'] = self.to_010_020(self._get_value('CERTIFICADO', 'act_code'))
         ws[f'L{current_row}'] = self.to_010_020(self._get_value('CALCULO', 'act_code'))
@@ -776,4 +783,20 @@ class MatrixGenerator:
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
         pix.save(out_path)
         return out_path
+
+    def _clean_ocr_text(self, v: Any) -> str:
+        if v is None:
+            return ""
+        s = str(v).strip()
+        if not s or s.upper() == "NOT FOUND":
+            return ""
+
+        # normaliza comillas raras
+        s = s.replace("“", "").replace("”", "").replace("’", "").replace("‘", "")
+
+        # quita basura OCR al principio tipo "! , . ; : etc"
+        s = re.sub(r'^[\s"\'`´!¡¿\W]{1,5}', '', s)
+
+        return s.strip()
+
 
