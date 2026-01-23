@@ -73,12 +73,27 @@ class FichaParser(BaseDocumentParser):
         return self._find_first_pattern(text, patterns)
 
     def _extract_act_code(self, text: str) -> str:
-        """Extract ACT code from ficha"""
+        """Extract ACT code from ficha - busca RES010 o RES020"""
+        m = re.search(r"(RES0*\d{2,3})", text, re.IGNORECASE)
+        if m:
+            code = m.group(1).upper()
+            code = re.sub(r"RES0+(\d)", r"RES0\1", code)  # normaliza RES00020 -> RES020
+            return code
+        
         patterns = [
-            r'(?:código\s*act|act\s*code)[:\s]*(010|020)',
-            r'(?:tipo\s*de\s*act|act\s*type)[:\s]*(010|020)',
+            r'(?:código\s*act|act\s*code)[:\s]*(RES\s*0*\d{2,3})',
+            r'(?:tipo\s*de\s*act|act\s*type)[:\s]*(RES\s*0*\d{2,3})',
+            r'(?:medida|actuación)[:\s]*(RES\s*0*\d{2,3})',
         ]
-        return self._find_first_pattern(text, patterns)
+        
+        for pattern in patterns:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                code = m.group(1).upper().replace(" ", "")
+                code = re.sub(r"RES0+(\d)", r"RES0\1", code)
+                return code
+        
+        return ""
 
     def _extract_catastral_ref(self, text: str) -> str:
         """Extract catastral reference from ficha"""

@@ -49,6 +49,7 @@ class MatrixGenerator:
             (r'convenio.*cae', None),
         ],
         'CEE': [
+            (r'E0?1[-_\s]?3[-_\s]?6(?:[-_\s]?1)?', None),
             (r'cee.*final', None),
             (r'E0?4[-_\s]?3[-_\s]?6[-_\s]?1', None),
             (r'certificado.*eficiencia', None),

@@ -135,12 +135,14 @@ class DniParser(BaseDocumentParser):
         if not self.text:
             return "NOT FOUND"
 
+        
         mrz_name = self._extract_name_from_mrz()
-        if mrz_name != "NOT FOUND":
+        if mrz_name != "NOT FOUND" and not self._is_garbage_name(mrz_name):
             return mrz_name
 
         t = self.text.strip()
 
+      
         patterns = [
             r"APELLIDOS\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{4,})\s+NOMBRE\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})",
             r"NOMBRE\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{2,})\s+APELLIDOS\s*[:\-]?\s*([A-ZÑÁÉÍÓÚ\s]{4,})",
@@ -165,13 +167,18 @@ class DniParser(BaseDocumentParser):
                 nom = self._clean_name(m.group(3))
                 name = f"{a1} {a2} {nom}".strip()
 
-            return name if not self._is_garbage_name(name) else "NOT FOUND"
+          
+            if not self._is_garbage_name(name):
+                return name
 
+    
         lines = [self._clean_name(ln) for ln in t.splitlines() if ln.strip()]
         caps_lines = [ln for ln in lines if re.fullmatch(r"[A-ZÑÁÉÍÓÚ\s]{10,}", ln)]
         if caps_lines:
             cand = max(caps_lines, key=len)
-            return cand if not self._is_garbage_name(cand) else "NOT FOUND"
+        
+            if not self._is_garbage_name(cand):
+                return cand
 
         return "NOT FOUND"
 
