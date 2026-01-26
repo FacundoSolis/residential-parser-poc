@@ -32,6 +32,7 @@ class CertificadoParser(BaseDocumentParser):
             "g": self._extract_g(),
             "b": self._extract_b(),
             "isolation_thickness": self._extract_isolation_thickness(),
+            "isolation_type": self._extract_isolation_type(),
 
         }
 
@@ -313,6 +314,15 @@ class CertificadoParser(BaseDocumentParser):
         # 3) fallback bruto (último recurso)
         m = re.search(r"\b(\d{2,4})\s*mm\b", t, re.IGNORECASE)
         return f"{m.group(1)} mm" if m else "NOT FOUND"
+    
+    def _extract_isolation_type(self) -> str:
+        """Extract isolation type: rollo or soplado"""
+        t = self.text or ""
+        if re.search(r"\brollo\b", t, re.IGNORECASE):
+            return "ROLLO"
+        if re.search(r"\bsoplado\b", t, re.IGNORECASE):
+            return "SOPLADO"
+        return "NOT FOUND"
 
 
 

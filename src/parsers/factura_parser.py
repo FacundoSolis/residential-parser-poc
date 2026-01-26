@@ -30,6 +30,7 @@ class FacturaParser(BaseDocumentParser):
             'installer_name': self._extract_installer_name(),
             'installer_address': self._extract_installer_address(),
             'installer_cif': self._extract_installer_cif(),
+            'isolation_type': self._extract_isolation_type(),
         }
         
         return result
@@ -241,4 +242,12 @@ class FacturaParser(BaseDocumentParser):
             if match:
                 return match.group(1)
         
+        return "NOT FOUND"
+    
+    def _extract_isolation_type(self) -> str:
+        """Extract isolation type: rollo or soplado"""
+        if re.search(r"\brollo\b", self.text, re.IGNORECASE):
+            return "ROLLO"
+        if re.search(r"\bsoplado\b", self.text, re.IGNORECASE):
+            return "SOPLADO"
         return "NOT FOUND"

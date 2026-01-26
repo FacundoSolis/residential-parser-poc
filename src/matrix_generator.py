@@ -292,36 +292,6 @@ class MatrixGenerator:
         current_row += 1
 
         
-        # Phone
-        ws[f'B{current_row}'] = 'Phone number'
-
-        contr_phone = self._get_value('CONTRATO', 'homeowner_phone')
-        fact_phone  = self._get_value('FACTURA', 'homeowner_phone')
-
-        ws[f'C{current_row}'] = self._pick_best(fact_phone, contr_phone, min_len=9)
-        ws[f'F{current_row}'] = fact_phone
-
-        current_row += 1
-
-        
-        # Mail
-        ws[f'B{current_row}'] = 'Mail'
-
-        contr_mail = self._get_value('CONTRATO', 'homeowner_email')
-        fact_mail  = self._get_value('FACTURA', 'homeowner_email')
-
-        ws[f'C{current_row}'] = self._pick_best(fact_mail, contr_mail, min_len=6)
-        ws[f'F{current_row}'] = fact_mail
-
-        current_row += 1
-
-        
-        # Signatures
-        ws[f'B{current_row}'] = 'Signatures (+format)'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'homeowner_signatures')
-        ws[f'E{current_row}'] = self._get_value('DECLARACION', 'signature')
-        current_row += 1
-        
         # ==================== ACT SECTION ====================
         ws[f'A{current_row}'] = 'ACT'
         ws[f'A{current_row}'].font = section_font
@@ -428,6 +398,11 @@ class MatrixGenerator:
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'utm_coordinates')
         current_row += 1
         
+        # Investment (€)
+        ws[f'B{current_row}'] = 'Investment (€)'
+        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'sell_price')
+        current_row += 1
+        
         # Investment
         ws[f'B{current_row}'] = 'Investment (€)'
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'investment')
@@ -514,7 +489,14 @@ class MatrixGenerator:
             self._get_value('CERTIFICADO', 'climatic_zone'),
         )
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')  # E1
+        ws[f'I{current_row}'] = self._get_value('CEE', 'climatic_zone')  # Agregar CEE
         ws[f'L{current_row}'] = ""  # OJO: 74 NO es zona, es G
+        current_row += 1
+
+        # Isolation type
+        ws[f'B{current_row}'] = 'Isolation type'
+        ws[f'F{current_row}'] = self._get_value('FACTURA', 'isolation_type')
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_type')
         current_row += 1
 
         # G (surface coefficient / coef. zona) -> en tu caso 74
@@ -841,11 +823,11 @@ class MatrixGenerator:
 
     def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
         doc = fitz.open(pdf_path)
-        page = doc[-1]  # última página
+        page = doc[5]  # misma página que contrato
 
         w, h = page.rect.width, page.rect.height
 
-        # Clip igual al de contrato para consistencia
+        # Clip igual al de contrato
         x0 = w * 0.05
         x1 = w * 0.50
         y0 = h * 0.68

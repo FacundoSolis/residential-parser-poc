@@ -19,6 +19,7 @@ class CeeParser(BaseDocumentParser):
             'address': self._extract_address(),
             'catastral_ref': self._extract_catastral_ref(),
             'certification_date': self._extract_certification_date(),
+            'climatic_zone': self._extract_climatic_zone(),
             'signature': self._check_signature(),
         }
         
@@ -87,4 +88,12 @@ class CeeParser(BaseDocumentParser):
         if re.search(r'Firma|Firmado|Fdo\.', self.text, re.IGNORECASE):
             return "Present"
         
+        return "NOT FOUND"
+    
+    def _extract_climatic_zone(self) -> str:
+        """Extract climatic zone"""
+        pattern = r"zona climática.*?es.*?([A-E]\d)"
+        match = re.search(pattern, self.text, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
         return "NOT FOUND"
