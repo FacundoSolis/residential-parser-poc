@@ -61,6 +61,7 @@ class ContratoParser(BaseDocumentParser):
             "utm_coordinates": self._extract_utm_coordinates(),
             "energy_savings": self._extract_energy_savings(),
             "act_code": self._extract_act_code(),
+            "sell_price": self._extract_sell_price(),
         }
 
         return result
@@ -564,3 +565,30 @@ class ContratoParser(BaseDocumentParser):
         letters = "TRWAGMYFPDXBNJZSQVHLCKE"
         num = int(dni[:8])
         return dni[-1] == letters[num % 23]
+
+    def _extract_sell_price(self) -> str:
+        """
+        Extrae precio de venta (€/kWh o €/IWh) del contrato.
+        Busca patrones como "precio de venta", "€/kWh", "€/IWh", etc.
+        """
+        t = getattr(self, "_text_norm", "") or self.text
+
+        # Patrones comunes para precio de venta
+        patterns = [
+            r"precio\s+de\s+venta[^€\d]*([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"venta[^€\d]*([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"precio\s+de\s+venta[^€\d]*([\d,]+(?:\.\d+)?)\s*euros?\s*por\s*[kI]Wh",
+        ]
+
+        for pattern in patterns:
+            m = re.search(pattern, t, re.IGNORECASE)
+            if m:
+                price = m.group(1).replace(",", ".")
+                try:
+                    float(price)  # validar que sea número
+                    return price
+                except ValueError:
+                    continue
+
+        return "NOT FOUND"

@@ -284,7 +284,7 @@ class MatrixGenerator:
         fact_addr  = self._get_value('FACTURA', 'homeowner_address')
         cert_addr  = self._get_value('CERTIFICADO', 'address')
 
-        ws[f'C{current_row}'] = self._pick_best(fact_addr, cert_addr, contr_addr, contr_loc, decl_addr, min_len=8)
+        ws[f'C{current_row}'] = self._pick_best(decl_addr, fact_addr, cert_addr, contr_addr, contr_loc, min_len=8)
 
         ws[f'E{current_row}'] = decl_addr
         ws[f'F{current_row}'] = fact_addr
@@ -392,8 +392,10 @@ class MatrixGenerator:
         act_contr = self._get_value('CONTRATO', 'location')
         act_fact  = self._get_value('FACTURA', 'homeowner_address')
         act_cert  = self._get_value('CERTIFICADO', 'address')
+        act_decl = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_address'))
 
-        ws[f'C{current_row}'] = self._pick_best(act_fact, act_cert, act_contr, min_len=8)
+        ws[f'C{current_row}'] = self._pick_best(act_decl, act_fact, act_cert, act_contr, min_len=8)
+        ws[f'E{current_row}'] = act_decl
         ws[f'F{current_row}'] = act_fact
         ws[f'H{current_row}'] = act_cert
         ws[f'I{current_row}'] = self._get_value('CEE', 'address')

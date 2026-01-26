@@ -10,7 +10,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.matrix_generator import MatrixGenerator
 
 # Ruta al ZIP/carpeta del cliente
-folder = Path("data/ALEGRE SANTA CRUZ MARIA PILAR")
+if len(sys.argv) > 1:
+    folder = Path(sys.argv[1])
+else:
+    folder = Path("data/ALEGRE SANTA CRUZ MARIA PILAR")
 
 print("="*80)
 print("🐛 DEBUG: Parsing individual documents")
@@ -31,6 +34,9 @@ if 'CONTRATO' in mg.parsed_data:
     print(f"  catastral_ref: '{contrato.get('catastral_ref', '')}'")
     print(f"  lifespan: '{contrato.get('lifespan', '')}'")
     print(f"  act_code: '{contrato.get('act_code', '')}'")
+    print(f"  sell_price: '{contrato.get('sell_price', '')}'")
+    print(f"  location: '{contrato.get('location', '')}'")
+    print(f"  homeowner_address: '{contrato.get('homeowner_address', '')}'")
 else:
     print("  ❌ NOT FOUND")
 
@@ -42,6 +48,7 @@ if 'CERTIFICADO' in mg.parsed_data:
     print(f"  finish_date: '{cert.get('finish_date', '')}'")
     print(f"  lifespan: '{cert.get('lifespan', '')}'")
     print(f"  catastral_ref: '{cert.get('catastral_ref', '')}'")
+    print(f"  address: '{cert.get('address', '')}'")
     print(f"  b: '{cert.get('b', '')}'")
     print(f"  calculation_methodology: '{cert.get('calculation_methodology', '')}'")
 else:
@@ -72,6 +79,26 @@ print("\n🔹 FICHA:")
 if 'FICHA' in mg.parsed_data:
     ficha = mg.parsed_data['FICHA']
     print(f"  act_code: '{ficha.get('act_code', '')}'")
+else:
+    print("  ❌ NOT FOUND")
+
+# --- DECLARACION ---
+print("\n🔹 DECLARACION:")
+if 'DECLARACION' in mg.parsed_data:
+    decl = mg.parsed_data['DECLARACION']
+    print(f"  homeowner_name: '{decl.get('homeowner_name', '')}'")
+    print(f"  homeowner_address: '{decl.get('homeowner_address', '')}'")
+    print(f"  catastral_ref: '{decl.get('catastral_ref', '')}'")
+else:
+    print("  ❌ NOT FOUND")
+
+# --- FACTURA ---
+print("\n🔹 FACTURA:")
+if 'FACTURA' in mg.parsed_data:
+    fact = mg.parsed_data['FACTURA']
+    print(f"  homeowner_name: '{fact.get('homeowner_name', '')}'")
+    print(f"  homeowner_address: '{fact.get('homeowner_address', '')}'")
+    print(f"  invoice_number: '{fact.get('invoice_number', '')}'")
 else:
     print("  ❌ NOT FOUND")
 

@@ -31,7 +31,7 @@ python -m src.main "data/your_folder_name"
 
 | Document | Status | Fields Extracted |
 |----------|--------|------------------|
-| E1-1-1 CONTRATO CESION AHORROS | ✅ Full | Name, DNI, Address, Phone, Email, Energy savings, Code, Location, Catastral ref, UTM |
+| E1-1-1 CONTRATO CESION AHORROS | ✅ Full | Name, DNI, Address, Phone, Email, Energy savings, Code, Location, Catastral ref, UTM, Sell price (€/kWh) |
 | E1-3-1 FICHA RES020 | ⚠️ Template | (Template only - no project-specific data) |
 | E1-3-2 DECLARACION RESPONSABLE | ✅ Full | Name, DNI, Address, Catastral ref, Code, Signature |
 | E1-3-3 FACTURA | ✅ Full | Invoice #, Date, Name, DNI, Address, Amount |
