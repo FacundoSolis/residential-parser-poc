@@ -845,31 +845,11 @@ class MatrixGenerator:
 
         w, h = page.rect.width, page.rect.height
 
-        # Clip más ancho para múltiples firmas
+        # Clip igual al de contrato para consistencia
         x0 = w * 0.05
-        x1 = w * 0.95
-        y0 = h * 0.60
-        y1 = h * 0.95
-
-        clip = fitz.Rect(x0, y0, x1, y1)
-
-        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-        zoom = 3
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
-        pix.save(out_path)
-        return out_path
-
-    def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
-        doc = fitz.open(pdf_path)
-        page = doc[-1]  # última página
-
-        w, h = page.rect.width, page.rect.height
-
-        # Clip similar, ajustar si necesario
-        x0 = w * 0.05
-        x1 = w * 0.95  # más ancho para múltiples firmas
-        y0 = h * 0.60
-        y1 = h * 0.95
+        x1 = w * 0.50
+        y0 = h * 0.68
+        y1 = h * 0.90
 
         clip = fitz.Rect(x0, y0, x1, y1)
 
