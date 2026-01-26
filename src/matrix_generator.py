@@ -598,6 +598,17 @@ class MatrixGenerator:
             except Exception as e:
                 ws[f'C{current_row}'] = f"Signature extract error: {e}"
 
+        declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
+        if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
+            img_path_decl = str(tmp_dir / "declaracion_firma.png")
+            try:
+                self._extract_declaracion_signature(declaracion_pdf, img_path_decl)
+                # Columna E = DECLARACION
+                self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
+                ws[f'E{current_row}'] = ""  # por si acaso
+            except Exception as e:
+                ws[f'E{current_row}'] = f"Signature extract error: {e}"
+
         current_row += 1
 
                 
@@ -819,6 +830,46 @@ class MatrixGenerator:
         x1 = w * 0.50
         y0 = h * 0.68
         y1 = h * 0.90
+
+        clip = fitz.Rect(x0, y0, x1, y1)
+
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        zoom = 3
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
+        pix.save(out_path)
+        return out_path
+
+    def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
+        doc = fitz.open(pdf_path)
+        page = doc[-1]  # última página
+
+        w, h = page.rect.width, page.rect.height
+
+        # Clip más ancho para múltiples firmas
+        x0 = w * 0.05
+        x1 = w * 0.95
+        y0 = h * 0.60
+        y1 = h * 0.95
+
+        clip = fitz.Rect(x0, y0, x1, y1)
+
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        zoom = 3
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
+        pix.save(out_path)
+        return out_path
+
+    def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
+        doc = fitz.open(pdf_path)
+        page = doc[-1]  # última página
+
+        w, h = page.rect.width, page.rect.height
+
+        # Clip similar, ajustar si necesario
+        x0 = w * 0.05
+        x1 = w * 0.95  # más ancho para múltiples firmas
+        y0 = h * 0.60
+        y1 = h * 0.95
 
         clip = fitz.Rect(x0, y0, x1, y1)
 
