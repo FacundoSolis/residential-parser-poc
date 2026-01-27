@@ -234,19 +234,23 @@ class MatrixGenerator:
         ws[f'B{current_row}'] = 'Name'
 
         contr_name = self._get_value('CONTRATO', 'homeowner_name')
-        decl_name = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_name'))
+        decl_name = self._get_value('DECLARACION', 'homeowner_name')
         fact_name  = self._get_value('FACTURA', 'homeowner_name')
         dni_name   = self._get_value('DNI', 'name')
         calc_name  = self._get_value('CALCULO', 'client_name')
 
-        # Columna C: mejor nombre disponible...
-        best_name = self._pick_best(fact_name, contr_name, decl_name, calc_name, min_len=6)
-        ws[f'C{current_row}'] = best_name
+        # Fallback: if DNI document doesn't have valid name, use from FACTURA
+        name_val = dni_name
+        if not self._is_valid_cell_value(name_val, min_len=6):
+            name_val = fact_name
+
+        # Columna C: CONTRATO
+        ws[f'C{current_row}'] = contr_name
 
         # Mantén las otras columnas como están (sirven para comparar)
         ws[f'E{current_row}'] = decl_name
         ws[f'F{current_row}'] = fact_name
-        ws[f'K{current_row}'] = "" if not self._is_valid_cell_value(dni_name, min_len=6) else dni_name
+        ws[f'K{current_row}'] = name_val
         ws[f'L{current_row}'] = calc_name
 
         current_row += 1
@@ -259,14 +263,12 @@ class MatrixGenerator:
         fact_dni  = self._get_value('FACTURA', 'homeowner_dni')
         dni_num   = self._get_value('DNI', 'dni_number')
 
-        # Columna C: fallback fuerte - usa contrato si es válido, sino factura
-        ws[f'C{current_row}'] = self._pick_best(
-            fact_dni,
-            contr_dni,
-            decl_dni,
-            dni_num,
-            min_len=9
-        )
+        # Fallback: if DNI document doesn't have it, use from FACTURA
+        if dni_num == "NOT FOUND":
+            dni_num = fact_dni
+
+        # Columna C: usa solo CONTRATO
+        ws[f'C{current_row}'] = contr_dni
 
         ws[f'E{current_row}'] = decl_dni
         ws[f'F{current_row}'] = fact_dni
@@ -280,11 +282,11 @@ class MatrixGenerator:
 
         contr_addr = self._get_value('CONTRATO', 'homeowner_address')
         contr_loc  = self._get_value('CONTRATO', 'location')  # a veces viene bien
-        decl_addr = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_address'))
+        decl_addr = self._get_value('DECLARACION', 'homeowner_address')
         fact_addr  = self._get_value('FACTURA', 'homeowner_address')
         cert_addr  = self._get_value('CERTIFICADO', 'address')
 
-        ws[f'C{current_row}'] = self._pick_best(decl_addr, fact_addr, cert_addr, contr_addr, contr_loc, min_len=8)
+        ws[f'C{current_row}'] = contr_addr
 
         ws[f'E{current_row}'] = decl_addr
         ws[f'F{current_row}'] = fact_addr
@@ -299,13 +301,7 @@ class MatrixGenerator:
         # Code
         ws[f'B{current_row}'] = 'Code (010/020)'
 
-        c_code = self._pick_best(
-            self.to_010_020(self._get_value('CONTRATO', 'act_code')),
-            self.to_010_020(self._get_value('DECLARACION', 'act_code')),
-            self.to_010_020(self._get_value('CERTIFICADO', 'act_code')),
-            self.to_010_020(self._get_value('CALCULO', 'act_code')),
-            min_len=3
-        )
+        c_code = self.to_010_020(self._get_value('CONTRATO', 'act_code'))
         ws[f'C{current_row}'] = c_code
         ws[f'D{current_row}'] = self.to_010_020(self._get_value('FICHA', 'act_code'))  
         ws[f'E{current_row}'] = self.to_010_020(self._get_value('DECLARACION', 'act_code'))
@@ -321,17 +317,12 @@ class MatrixGenerator:
         contr_ae = self._get_value('CONTRATO', 'energy_savings')
         cert_ae  = self._get_value('CERTIFICADO', 'energy_savings')
         calc_ae  = self._get_value('CALCULO', 'ae')
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('FICHA', 'energy_savings'),
-            self._get_value('CERTIFICADO', 'energy_savings'),
-            self._get_value('CALCULO', 'ae'),
-            self._get_value('CONTRATO', 'energy_savings'),
-        ))
+        ws[f'D{current_row}'] = self._norm_num(cert_ae)
 
 
 
-        # Columna C = mejor valor global con lógica inteligente
-        ws[f'C{current_row}'] = self._pick_best_energy_savings(contr_ae, cert_ae, calc_ae)
+        # Columna C = CONTRATO
+        ws[f'C{current_row}'] = self._norm_num(contr_ae)
 
         ws[f'H{current_row}'] = self._norm_num(cert_ae)
         ws[f'L{current_row}'] = self._norm_num(calc_ae)
@@ -342,8 +333,14 @@ class MatrixGenerator:
         ws[f'B{current_row}'] = 'Start date'
 
         start = self._get_value('CERTIFICADO', 'start_date')
-        ws[f'C{current_row}'] = start 
-        ws[f'D{current_row}'] = start 
+        contrato_start = self._get_value('CONTRATO', 'start_date')
+        if not contrato_start:
+            contrato_start = start
+        ws[f'C{current_row}'] = contrato_start
+        ficha_start = self._get_value('FICHA', 'start_date')
+        if not ficha_start:
+            ficha_start = contrato_start if contrato_start else start
+        ws[f'D{current_row}'] = ficha_start
         ws[f'H{current_row}'] = start
         current_row += 1
         
@@ -351,8 +348,14 @@ class MatrixGenerator:
         ws[f'B{current_row}'] = 'Finish date'
 
         finish = self._get_value('CERTIFICADO', 'finish_date')
-        ws[f'C{current_row}'] = finish
-        ws[f'D{current_row}'] = finish
+        contrato_finish = self._get_value('CONTRATO', 'finish_date')
+        if not contrato_finish:
+            contrato_finish = finish
+        ws[f'C{current_row}'] = contrato_finish
+        ficha_finish = self._get_value('FICHA', 'finish_date')
+        if not ficha_finish:
+            ficha_finish = contrato_finish if contrato_finish else finish
+        ws[f'D{current_row}'] = ficha_finish
         ws[f'H{current_row}'] = finish
         current_row += 1
         
@@ -364,7 +367,7 @@ class MatrixGenerator:
         act_cert  = self._get_value('CERTIFICADO', 'address')
         act_decl = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_address'))
 
-        ws[f'C{current_row}'] = self._pick_best(act_decl, act_fact, act_cert, act_contr, min_len=8)
+        ws[f'C{current_row}'] = act_contr
         ws[f'E{current_row}'] = act_decl
         ws[f'F{current_row}'] = act_fact
         ws[f'H{current_row}'] = act_cert
@@ -384,7 +387,7 @@ class MatrixGenerator:
         cee_cat   = self._get_value('CEE', 'catastral_ref')
         reg_cat   = self._get_value('REGISTRO', 'catastral_ref')
 
-        ws[f'C{current_row}'] = self._pick_best(cert_cat, cee_cat, reg_cat, contr_cat, decl_cat, min_len=10)
+        ws[f'C{current_row}'] = contr_cat
 
         ws[f'E{current_row}'] = decl_cat
         ws[f'H{current_row}'] = cert_cat
@@ -403,91 +406,60 @@ class MatrixGenerator:
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'sell_price')
         current_row += 1
         
-        # Investment
-        ws[f'B{current_row}'] = 'Investment (€)'
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'investment')
-        current_row += 1
-        
         # Remuneration
         ws[f'B{current_row}'] = 'Remuneration'
         current_row += 1
         
         # Lifespan
         ws[f'B{current_row}'] = 'Lifespan (años)'
-        life = self._pick_best(
-            self._get_value('CERTIFICADO', 'lifespan'),
-            self._get_value('CONTRATO', 'lifespan'),
-            min_len=1
-        )
-        ws[f'C{current_row}'] = life 
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'lifespan')
+        life = self._get_value('CERTIFICADO', 'lifespan')
+        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'lifespan')
+        ws[f'H{current_row}'] = life
         current_row += 1
         
         # Sell price
         ws[f'B{current_row}'] = 'Sell price (€/kWh)'
         ws[f'C{current_row}'] = self._get_value('CONTRATO', 'sell_price')
+        ws[f'D{current_row}'] = self._get_value('FICHA', 'sell_price')
         current_row += 1
         
         # Fp
         ws[f'B{current_row}'] = 'Fp'
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('FICHA', 'fp'),
-            self._get_value('CERTIFICADO', 'fp'),
-            self._get_value('CALCULO', 'fp'),
-        ))
+        ficha_fp = self._get_value('FICHA', 'fp') or self._get_value('CALCULO', 'fp')
+        ws[f'D{current_row}'] = self._norm_num(ficha_fp)
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'fp'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'fp'))
         current_row += 1
         
         # Ui (Ki)
         ws[f'B{current_row}'] = 'Ui'
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('FICHA', 'ui'),
-            self._get_value('CERTIFICADO', 'ui'),
-            self._get_value('CALCULO', 'ki'),
-        ))
+        ficha_ui = self._get_value('FICHA', 'ui') or self._get_value('CALCULO', 'ki')
+        ws[f'D{current_row}'] = self._norm_num(ficha_ui)
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'ui'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'ki'))
         current_row += 1
         
         # Uf (Kf)
         ws[f'B{current_row}'] = 'Uf'
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('FICHA', 'uf'),
-            self._get_value('CERTIFICADO', 'uf'),
-            self._get_value('CALCULO', 'kf'),
-        ))
+        ficha_uf = self._get_value('FICHA', 'uf') or self._get_value('CALCULO', 'kf')
+        ws[f'D{current_row}'] = self._norm_num(ficha_uf)
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'uf'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'kf'))
         current_row += 1
         
         # S (Surface)
         ws[f'B{current_row}'] = 'S'
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('FICHA', 'surface'),
-            self._get_value('CERTIFICADO', 'surface'),
-            self._get_value('CALCULO', 's'),
-        ))
+        ficha_s = self._get_value('FICHA', 'surface') or self._get_value('CALCULO', 's')
+        ws[f'D{current_row}'] = self._norm_num(ficha_s)
+        ws[f'E{current_row}'] = self._norm_num(self._get_value('DECLARACION', 'surface'))
+        ws[f'F{current_row}'] = self._norm_num(self._get_value('FACTURA', 's'))
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'surface'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 's'))
         current_row += 1
 
-        # b (coeficiente superficie - va ANTES de Climatic zone)
-        ws[f'B{current_row}'] = 'b'
-        ws[f'D{current_row}'] = self._pick_best(
-            self._get_value('CERTIFICADO', 'b'),
-            self._get_value('CALCULO', 'calculation_methodology'),
-        )
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'b')
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'calculation_methodology')
-        current_row += 1
-        
         # Climatic zone
         ws[f'B{current_row}'] = 'Climatic zone'
-        ws[f'D{current_row}'] = self._pick_best(
-            self._get_value('FICHA', 'climatic_zone'),
-            self._get_value('CERTIFICADO', 'climatic_zone'),
-        )
+        ws[f'D{current_row}'] = self._get_value('FICHA', 'climatic_zone')
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')  # E1
         ws[f'I{current_row}'] = self._get_value('CEE', 'climatic_zone')  # Agregar CEE
         ws[f'L{current_row}'] = ""  # OJO: 74 NO es zona, es G
@@ -501,61 +473,43 @@ class MatrixGenerator:
 
         # G (surface coefficient / coef. zona) -> en tu caso 74
         ws[f'B{current_row}'] = 'G'
-        ws[f'D{current_row}'] = self._norm_num(self._pick_best(
-            self._get_value('CERTIFICADO', 'g'),
-            self._get_value('CALCULO', 'zone_climatique'),
-        ))
+        ws[f'D{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'g'))
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'g'))  # 74,0
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'zone_climatique'))  # 74
+        current_row += 1
+
+        ws[f'B{current_row}'] = 'Type (ROLLO/SOPLADO)'
+        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_type')
+        ws[f'F{current_row}'] = self._get_value('FACTURA', 'isolation_type')
+        ws[f'D{current_row}'] = self._get_value('FICHA', 'isolation_type')
+        ws[f'E{current_row}'] = self._get_value('DECLARACION', 'isolation_type')
         current_row += 1
 
         # Isolation Thickness
         ws[f'B{current_row}'] = 'Isolation Thickness'
 
-        iso = self._pick_best(
-            self._get_value('CERTIFICADO', 'isolation_thickness'),
-            self._get_value('FICHA', 'isolation_thickness'),
-            min_len=2
-        )
-        ws[f'C{current_row}'] = iso
-        ws[f'D{current_row}'] = iso
+        iso = self._get_value('CERTIFICADO', 'isolation_thickness')
+        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'isolation_thickness')
+        ws[f'D{current_row}'] = self._get_value('FICHA', 'isolation_thickness')
         ws[f'F{current_row}'] = iso  # ✅ AÑADIR FACTURA
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_thickness')
+        ws[f'H{current_row}'] = iso
         current_row += 1
         
-        # Surface coefficient (0,83 del CALCULO)
+        # Surface coefficient (porcentaje del CALCULO)
         ws[f'B{current_row}'] = 'Surface coefficient'
 
-        # D y L: valor de CALCULO (0,83)
-        calc_surf_coeff = self._get_value('CALCULO', 'calculation_methodology')
-        ws[f'D{current_row}'] = calc_surf_coeff
+        # Solo L: porcentaje de CALCULO
+        calc_surf_coeff = self._get_value('CALCULO', 'porcentaje')
         ws[f'H{current_row}'] = ""  # CERTIFICADO no tiene surface coefficient separado
         ws[f'L{current_row}'] = calc_surf_coeff
 
         current_row += 1
-
-        # D: queremos mostrar el "coeficiente final usado" (prioriza CALCULO 0,83)
-        ws[f'D{current_row}'] = self._pick_best(
-            self._get_value('CALCULO', 'calculation_methodology'),  # 0,83
-            self._get_value('CERTIFICADO', 'b'),
-        )
-
-        # H: solo mostrar b si NO es el default "1"
-        cert_b = self._get_value('CERTIFICADO', 'b')
-        ws[f'H{current_row}'] = "" if cert_b in {"", "1", "1,0", "1.0"} else cert_b
-
-        # L: 0,83 del cálculo
-        ws[f'L{current_row}'] = self._get_value('CALCULO', 'calculation_methodology')
-
-        current_row += 1
-
 
         # Calculation methodology (R*t)
         ws[f'B{current_row}'] = 'Calculation methodology (R*t)'# Calculation methodology (R*t) - SOLO el R*t del CERTIFICADO
 
         rt = self._get_value('CERTIFICADO', 'calculation_methodology')  # 0,75
 
-        ws[f'D{current_row}'] = self._norm_num(rt)
         ws[f'H{current_row}'] = self._norm_num(rt)
         ws[f'L{current_row}'] = ""  # NO poner 0,83 aquí
 
@@ -582,14 +536,14 @@ class MatrixGenerator:
 
         declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
         if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
-            img_path_decl = str(tmp_dir / "declaracion_firma.png")
-            try:
-                self._extract_declaracion_signature(declaracion_pdf, img_path_decl)
+            # Usar la misma imagen de firma que el CONTRATO (cedente)
+            img_path_decl = str(tmp_dir / "contrato_firma_cedente.png")
+            if os.path.exists(img_path_decl):
                 # Columna E = DECLARACION
                 self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
                 ws[f'E{current_row}'] = ""  # por si acaso
-            except Exception as e:
-                ws[f'E{current_row}'] = f"Signature extract error: {e}"
+            else:
+                ws[f'E{current_row}'] = "Signature image not found"
 
         current_row += 1
 
@@ -823,7 +777,7 @@ class MatrixGenerator:
 
     def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
         doc = fitz.open(pdf_path)
-        page = doc[5]  # misma página que contrato
+        page = doc[-1]  # última página para DECLARACIÓN
 
         w, h = page.rect.width, page.rect.height
 

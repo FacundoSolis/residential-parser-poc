@@ -59,6 +59,7 @@ class DniParser(BaseDocumentParser):
         - OCR tolerant: O/I/L may appear inside the 8 digits only
         - Last letter: accept '6' as 'G' (common OCR)
         - Never convert final 'L' -> '1' (that was the bug)
+        - Also check MRZ lines for document number
         """
         if not self.text:
             return "NOT FOUND"
@@ -70,7 +71,16 @@ class DniParser(BaseDocumentParser):
         if m and self._is_valid_spanish_dni(m.group(1)):
             return m.group(1)
 
-        # 2) OCR-tolerant scan
+        # 2) Check MRZ lines for document number
+        mrz_lines = re.findall(r"[A-Z0-9<]{20,}", raw)
+        for line in mrz_lines:
+            # Spanish MRZ second line starts with document number
+            if re.match(r"^\d{8}[A-Z]", line):
+                cand = line[:9]
+                if self._is_valid_spanish_dni(cand):
+                    return cand
+
+        # 3) OCR-tolerant scan
         t = self._normalize_common(raw)
 
         for m in re.finditer(r"([0-9OIL]{8})([A-Z6IL1])", t):

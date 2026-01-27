@@ -128,7 +128,7 @@ class BaseDocumentParser:
                 self.text = ""
 
             # --- If scanned/empty: OCR fallback ---
-            if len(self.text.strip()) < 50:
+            if len(self.text.strip()) < 50 or (("contrato" in self.file_path.name.lower() or "declaracion" in self.file_path.name.lower()) and len(self.text.strip()) < 2000):
                 if self._check_ocr_available():
                     print("  PDF appears scanned, using OCR...")
                     self.text = self._extract_with_ocr_pdf()

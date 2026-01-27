@@ -92,7 +92,7 @@ class CeeParser(BaseDocumentParser):
     
     def _extract_climatic_zone(self) -> str:
         """Extract climatic zone"""
-        pattern = r"zona climática.*?es.*?([A-E]\d)"
+        pattern = r"zona climática.*?([A-E]\d)"
         match = re.search(pattern, self.text, re.IGNORECASE)
         if match:
             return match.group(1).upper()

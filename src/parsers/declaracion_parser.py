@@ -14,12 +14,15 @@ class DeclaracionParser(BaseDocumentParser):
         self.extract_text()
 
         return {
-            "document_type": "DECLARACION_RESPONSABLE",
+            "document_type": "DECLARACION",
             "homeowner_name": self._extract_homeowner_name(),
             "homeowner_dni": self._extract_homeowner_dni(),
             "homeowner_address": self._extract_homeowner_address(),
             "catastral_ref": self._extract_catastral_ref(),
             "act_code": self._extract_act_code(),
+            "energy_savings": self._extract_energy_savings(),
+            "surface": self._extract_surface(),
+            "isolation_type": self._extract_isolation_type(),
             "signature": self._check_signature(),
         }
 
@@ -104,7 +107,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 8:
+            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
                 return name
 
         # 2) Titular / Solicitante / Beneficiario
@@ -115,7 +118,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 8:
+            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
                 return name
 
         # 3) Don/Doña/D.
@@ -126,7 +129,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 10:
+            if 2 <= len(name.split()) <= 10 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
                 return name
 
         return "NOT FOUND"
@@ -177,11 +180,11 @@ class DeclaracionParser(BaseDocumentParser):
 
         patterns = [
             # 1) Domicilio: ... (hasta CP / salto / Teléfono / Firma)
-            r"[Dd]omicilio[:\s]+(.+?)(?=\n|,\s*\d{5}|CP|C\.P\.|Tel[eé]fono|Firma|Firmado)",
+            r"Domicilio\s+(.+?)(?=\n|,\s*\d{5}|CP|C\.P\.|Tel|Firma)",
             # 2) Dirección: ...
-            r"[Dd]irecci[oó]n[:\s]+(.+?)(?=\n|CP|C\.P\.|Tel[eé]fono|Firma|Firmado)",
+            r"Direcci[oó]n\s+(.+?)(?=\n|CP|C\.P\.|Tel|Firma)",
             # 3) Si viene en la siguiente línea (OCR típico)
-            r"(?:[Dd]omicilio|[Dd]irecci[oó]n)\s*[:\-]?\s*\n\s*(.{10,220})",
+            r"(?:Domicilio|Direcci[oó]n)\s*[:\-]?\s*\n\s*(.{10,220})",
         ]
 
         for pattern in patterns:
@@ -198,7 +201,7 @@ class DeclaracionParser(BaseDocumentParser):
         t = self.text or ""
 
         m = re.search(
-            r"Referencia\s+catastral.*?\n\s*([0-9A-Z\s]{10,40})",
+            r"Referencia\s+catastral.*?([0-9A-Z]{10,25})",
             t,
             re.IGNORECASE | re.DOTALL,
         )
@@ -227,6 +230,41 @@ class DeclaracionParser(BaseDocumentParser):
             return code
         return "NOT FOUND"
 
+    def _extract_energy_savings(self) -> str:
+        patterns = [
+            r"Ahorro.*?AE\s+([\d.]+)",
+            r"AE\s+([\d.]+)",
+            r"AE.*?([\d.]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                return f"{match.group(1)}"
+        return "NOT FOUND"
+
+    def _extract_surface(self) -> str:
+        patterns = [
+            r"superficie.*?(\d+(?:[.,]\d+)?)",
+            r"s\s*=\s*(\d+(?:[.,]\d+)?)",
+            r"área.*?(\d+(?:[.,]\d+)?)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                return match.group(1).replace(",", ".")
+        return "NOT FOUND"
+
+    def _extract_isolation_type(self) -> str:
+        patterns = [
+            r"(ROLLO|SOPLADO)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                return match.group(1).upper()
+        return "NOT FOUND"
+
     def _check_signature(self) -> str:
         t = self.text or ""
         return "Present" if re.search(r"Firma|Firmado|Fdo\.", t, re.IGNORECASE) else "NOT FOUND"
@@ -237,9 +275,13 @@ class DeclaracionParser(BaseDocumentParser):
 
         a = re.sub(r"\s+", " ", addr).strip()
 
+        # Quita prefijos específicos de basura OCR/plantilla
+        a = re.sub(r"de la instalación en que se ejecutó\s*", "", a, flags=re.IGNORECASE)
+        a = re.sub(r'^[!"]*\s*', '', a)  # Quita " ! al inicio
+
         # Quita prefijos típicos de plantilla/OCR
         a = re.sub(
-            r"^(?:domicilio|direcci[oó]n|direccion|postal|c[oó]digo\s*postal|postal de la instalaci[oó]n.*?)(?:\s+en\s+que\s+se\s+ejecut[oó].*?)?\s*[:\-]?\s*",
+            r"^(?:domicilio|direcci[oó]n|direccion|postal|c[oó]digo\s*postal|postal de la instalaci[oó]n.*?|de la instalaci[oó]n.*?)(?:\s+en\s+que\s+se\s+ejecut[oó].*?)?\s*[:\-]?\s*",
             "",
             a,
             flags=re.IGNORECASE,
@@ -259,5 +301,10 @@ class DeclaracionParser(BaseDocumentParser):
 
         # Limpieza final
         a = a.strip(" ,;.-")
+
+        # Si contiene teléfono o firma, no es dirección
+        if re.search(r"Tel[eé]fono|Correo electr[oó]nico|Firma|Firmado", a, re.IGNORECASE):
+            return "NOT FOUND"
+
         return a
 

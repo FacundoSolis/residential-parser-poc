@@ -35,7 +35,7 @@ class ContratoParser(BaseDocumentParser):
             location = self._extract_cedente_address()
 
         result = {
-            "document_type": "CONTRATO_CESION_AHORROS",
+            "document_type": "CONTRATO",
 
             # Cesionario (empresa)
             "sd_do_company_name": self._extract_cesionario_company(),
@@ -62,6 +62,9 @@ class ContratoParser(BaseDocumentParser):
             "energy_savings": self._extract_energy_savings(),
             "act_code": self._extract_act_code(),
             "sell_price": self._extract_sell_price(),
+            "start_date": self._extract_start_date(),
+            "finish_date": self._extract_finish_date(),
+            "lifespan": self._extract_lifespan(),
         }
 
         return result
@@ -204,7 +207,7 @@ class ContratoParser(BaseDocumentParser):
         """
         t = getattr(self, "_text_norm", "") or self.text
 
-        m = re.search(r"(\d[\d\s.,]{2,})\s*kWh\s*/\s*a(?:ñ|n)o", t, re.IGNORECASE)
+        m = re.search(r"(\d[\d\s.,]{2,})\s*k[wW]?[hH]\s*/\s*a(?:ñ|n)o", t, re.IGNORECASE)
         if m:
             raw = m.group(1)
             # ✅ deja solo dígitos (mata espacios, puntos, comas y saltos)
@@ -575,20 +578,113 @@ class ContratoParser(BaseDocumentParser):
 
         # Patrones comunes para precio de venta
         patterns = [
-            r"precio\s+de\s+venta[^€\d]*([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
-            r"venta[^€\d]*([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
-            r"([\d,]+(?:\.\d+)?)\s*€/[kI]Wh",
-            r"precio\s+de\s+venta[^€\d]*([\d,]+(?:\.\d+)?)\s*euros?\s*por\s*[kI]Wh",
+            r"contraprestación\s+en\s+especie\s+se\s+estima\s+en\s+un\s+valor\s+económico\s+equivalente\s+de\s+([\d\s,]+(?:\.\d+)?)\s*€",
+            r"precio\s+de\s+venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"precio\s+de\s+venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*euros?\s*por\s*[kI]Wh",
         ]
 
         for pattern in patterns:
             m = re.search(pattern, t, re.IGNORECASE)
             if m:
-                price = m.group(1).replace(",", ".")
+                price = m.group(1).replace(",", ".").replace(" ", "")
                 try:
                     float(price)  # validar que sea número
                     return price
                 except ValueError:
                     continue
 
+        return "NOT FOUND"
+
+    def _extract_start_date(self) -> str:
+        """Extract start date from contrato"""
+        patterns = [
+            r"inici[oó]\s+el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"[Ff]echa.*?inicio[:\s]+([\d/]+)",
+            r"desde\s+el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"fecha\s+de\s+inicio[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+            r"vigencia\s+desde[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+            r"contrato\s+desde[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self._text_norm, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 3:
+                    day, month, year = match.groups()
+                    months = {
+                        "enero": "01",
+                        "febrero": "02",
+                        "marzo": "03",
+                        "abril": "04",
+                        "mayo": "05",
+                        "junio": "06",
+                        "julio": "07",
+                        "agosto": "08",
+                        "septiembre": "09",
+                        "octubre": "10",
+                        "noviembre": "11",
+                        "diciembre": "12",
+                    }
+                    month_num = months.get(month.lower(), month)
+                    return f"{day}/{month_num}/{year}"
+                else:
+                    return match.group(1)
+
+        return "NOT FOUND"
+
+    def _extract_finish_date(self) -> str:
+        """Extract finish date from contrato"""
+        patterns = [
+            r"finaliz[oó].*?el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"[Ff]echa.*?fin[:\s]+([\d/]+)",
+            r"hasta\s+el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"fecha\s+de\s+fin[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+            r"vigencia\s+hasta[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+            r"contrato\s+hasta[:\s]*(\d{1,2}[/-]\d{1,2}[/-]\d{4})",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self._text_norm, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 3:
+                    day, month, year = match.groups()
+                    months = {
+                        "enero": "01",
+                        "febrero": "02",
+                        "marzo": "03",
+                        "abril": "04",
+                        "mayo": "05",
+                        "junio": "06",
+                        "julio": "07",
+                        "agosto": "08",
+                        "septiembre": "09",
+                        "octubre": "10",
+                        "noviembre": "11",
+                        "diciembre": "12",
+                    }
+                    month_num = months.get(month.lower(), month)
+                    return f"{day}/{month_num}/{year}"
+                else:
+                    return match.group(1)
+
+        return "NOT FOUND"
+
+    def _extract_lifespan(self) -> str:
+        """Extract lifespan in years"""
+        patterns = [
+            r"duración.*?(\d+)\s*años?",
+            r"(\d+)\s*años?",
+            r"período.*?(\d+)\s*años?",
+            r"vigencia.*?(\d+)\s*años?",
+            r"10",  # common default
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, self._text_norm, re.IGNORECASE)
+            if match:
+                if len(match.groups()) > 0:
+                    return f"{match.group(1)}"
+                else:
+                    return "10"  # for the "10" pattern
         return "NOT FOUND"

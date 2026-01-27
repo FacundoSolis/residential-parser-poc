@@ -40,6 +40,9 @@ class FichaParser(BaseDocumentParser):
             'act_code': self._extract_act_code(t),
             'catastral_ref': self._extract_catastral_ref(t),
             'energy_savings': self._extract_energy_savings(t),
+            'start_date': self._extract_start_date(t),
+            'finish_date': self._extract_finish_date(t),
+            'sell_price': self._extract_sell_price(t),
             'fp': self._extract_fp(t),
             'ui': self._extract_ui(t),
             'uf': self._extract_uf(t),
@@ -111,35 +114,124 @@ class FichaParser(BaseDocumentParser):
         ]
         return self._find_first_pattern(text, patterns)
 
+    def _extract_sell_price(self, text: str) -> str:
+        """Extract sell price (€/kWh) from ficha"""
+        patterns = [
+            r"precio\s+de\s+venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"([\d\s,]+(?:\.\d+)?)\s*€/[kI]Wh",
+            r"precio\s+de\s+venta[^€\d]*([\d\s,]+(?:\.\d+)?)\s*euros?\s*por\s*[kI]Wh",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, text, re.IGNORECASE)
+            if m:
+                price = m.group(1).replace(",", ".").replace(" ", "")
+                try:
+                    float(price)  # validar que sea número
+                    return price
+                except ValueError:
+                    continue
+        return ""
+
+    def _extract_start_date(self, text: str) -> str:
+        """Extract start date from ficha"""
+        patterns = [
+            r"inici[oó]\s+el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"[Ff]echa.*?inicio[:\s]+([\d/]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 3:
+                    day, month, year = match.groups()
+                    months = {
+                        "enero": "01",
+                        "febrero": "02",
+                        "marzo": "03",
+                        "abril": "04",
+                        "mayo": "05",
+                        "junio": "06",
+                        "julio": "07",
+                        "agosto": "08",
+                        "septiembre": "09",
+                        "octubre": "10",
+                        "noviembre": "11",
+                        "diciembre": "12",
+                    }
+                    month_num = months.get(month.lower(), month)
+                    return f"{day}/{month_num}/{year}"
+                else:
+                    return match.group(1)
+
+        return ""
+
+    def _extract_finish_date(self, text: str) -> str:
+        """Extract finish date from ficha"""
+        patterns = [
+            r"finaliz[oó].*?el\s+(\d+)\s+de\s+(\w+)\s+de\s+(\d{4})",
+            r"[Ff]echa.*?fin[:\s]+([\d/]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                if len(match.groups()) == 3:
+                    day, month, year = match.groups()
+                    months = {
+                        "enero": "01",
+                        "febrero": "02",
+                        "marzo": "03",
+                        "abril": "04",
+                        "mayo": "05",
+                        "junio": "06",
+                        "julio": "07",
+                        "agosto": "08",
+                        "septiembre": "09",
+                        "octubre": "10",
+                        "noviembre": "11",
+                        "diciembre": "12",
+                    }
+                    month_num = months.get(month.lower(), month)
+                    return f"{day}/{month_num}/{year}"
+                else:
+                    return match.group(1)
+
+        return ""
+
     def _extract_fp(self, text: str) -> str:
         """Extract Fp from ficha"""
         patterns = [
-            r'(?:fp|factor\s*p)[:\s]*([0-9.,]+)',
-            r'(?:p\s*factor)[:\s]*([0-9.,]+)',
+            r'(?:fp|factor\s*p)[:=\s]*([0-9.,]+)',
+            r'(?:p\s*factor)[:=\s]*([0-9.,]+)',
+            r'Fp[:=\s]*([0-9.,]+)',
         ]
         return self._find_first_pattern(text, patterns)
 
     def _extract_ui(self, text: str) -> str:
         """Extract Ui from ficha"""
         patterns = [
-            r'(?:ui|transmitancia)[:\s]*([0-9.,]+)',
-            r'(?:u\s*inicial)[:\s]*([0-9.,]+)',
+            r'(?:ui|transmitancia)[:=\s]*([0-9.,]+)',
+            r'(?:u\s*inicial)[:=\s]*([0-9.,]+)',
+            r'Ui[:=\s]*([0-9.,]+)',
         ]
         return self._find_first_pattern(text, patterns)
 
     def _extract_uf(self, text: str) -> str:
         """Extract Uf from ficha"""
         patterns = [
-            r'(?:uf|u\s*final)[:\s]*([0-9.,]+)',
-            r'(?:transmitancia\s*final)[:\s]*([0-9.,]+)',
+            r'(?:uf|u\s*final)[:=\s]*([0-9.,]+)',
+            r'(?:transmitancia\s*final)[:=\s]*([0-9.,]+)',
+            r'Uf[:=\s]*([0-9.,]+)',
         ]
         return self._find_first_pattern(text, patterns)
 
     def _extract_surface(self, text: str) -> str:
         """Extract surface area from ficha"""
         patterns = [
-            r'(?:superficie|surface|área)[:\s]*([0-9.,]+)',
-            r'(?:s\s*=|superficie\s*=)[:\s]*([0-9.,]+)',
+            r'(?:superficie|surface|área)[:=\s]*([0-9.,]+)',
+            r'(?:s\s*=|superficie\s*=)[:=\s]*([0-9.,]+)',
+            r'S[:=\s]*([0-9.,]+)',
         ]
         return self._find_first_pattern(text, patterns)
 

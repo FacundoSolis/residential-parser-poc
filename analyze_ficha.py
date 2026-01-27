@@ -1,6 +1,6 @@
 import pdfplumber
 
-pdf_path = 'data/sample_1/E1-3-1 FICHA RES020 CUMPLIMENTADA.pdf'
+pdf_path = 'data/ZALAMA LORA BENITO/ZALAMA LORA BENITO/E1-3 DOCUMENTOS JUSTIFICATIVOS/E1-3-2 DECLARACION RESPONSABLE.pdf'
 
 with pdfplumber.open(pdf_path) as pdf:
     for i, page in enumerate(pdf.pages):

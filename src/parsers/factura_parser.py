@@ -31,6 +31,8 @@ class FacturaParser(BaseDocumentParser):
             'installer_address': self._extract_installer_address(),
             'installer_cif': self._extract_installer_cif(),
             'isolation_type': self._extract_isolation_type(),
+            'isolation_thickness': self._extract_isolation_thickness(),
+            's': self._extract_s(),
         }
         
         return result
@@ -244,10 +246,81 @@ class FacturaParser(BaseDocumentParser):
         
         return "NOT FOUND"
     
+    def _extract_s(self) -> str:
+        """Extract surface area (S) in m²"""
+        # First, try specific patterns
+        patterns = [
+            r'[Ss]uperficie[:\s]*([\d.,]+)\s*m[²2]?',
+            r'[Ss]uperficie\s+total[:\s]*([\d.,]+)\s*m[²2]?',
+            r'[Mm]etros\s+cuadrados[:\s]*([\d.,]+)',
+            r'[Ss]\s*[:=]\s*([\d.,]+)',
+            r'[Aa]rea[:\s]*([\d.,]+)\s*m[²2]?',
+            r'(\d{2,4})\s*m[²2]',
+            r'(\d{2,4})\s*metros\s+cuadrados',
+            r'aislamiento\s+(\d{2,3}(?:\.\d)?)',  # 50.0 after aislamiento
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                s_value = match.group(1).replace(',', '.')
+                try:
+                    num = float(s_value)
+                    if 10 <= num <= 1000:  # reasonable surface range
+                        return str(int(num))  # return as integer
+                except ValueError:
+                    continue
+        
+        # Fallback: look for any number near m²
+        match = re.search(r'(\d{2,4})\s*(?:m[²2]|metros?\s+cuadrados?)', self.text, re.IGNORECASE)
+        if match:
+            s_value = match.group(1)
+            try:
+                num = int(s_value)
+                if 10 <= num <= 1000:
+                    return str(num)
+            except ValueError:
+                pass
+        
+        return "NOT FOUND"
+    
     def _extract_isolation_type(self) -> str:
-        """Extract isolation type: rollo or soplado"""
-        if re.search(r"\brollo\b", self.text, re.IGNORECASE):
-            return "ROLLO"
-        if re.search(r"\bsoplado\b", self.text, re.IGNORECASE):
-            return "SOPLADO"
+        """Extract isolation type/material"""
+        patterns = [
+            (r'URSA\s+[A-Z\'\d]+', 0),  # no group
+            (r'producto[:\s]*([A-Z][A-Z\s\'R\d]+)', 1),  # has group
+            (r'aislamiento\s+térmico\s+([a-z\s]+)', 1),  # has group
+            (r'([A-Z][A-Z\s\'R\d]{5,})', 1),  # has group
+        ]
+        
+        for pattern, group_idx in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                product = match.group(group_idx).strip()
+                # Filter out common non-product words
+                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA']):
+                    return product
+        
+        return "NOT FOUND"
+    
+    def _extract_isolation_thickness(self) -> str:
+        """Extract isolation thickness in mm"""
+        patterns = [
+            r'[Ee]spesor\s+aislante[:\s]*([\d.,]+)\s*mm',
+            r'[Gg]rosor\s+aislante[:\s]*([\d.,]+)\s*mm',
+            r'aislante\s+de\s+([\d.,]+)\s*mm',
+            r'(\d{2,3})\s*mm',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE)
+            if match:
+                thickness = match.group(1).replace(',', '.')
+                try:
+                    num = float(thickness)
+                    if 10 <= num <= 500:  # reasonable thickness range
+                        return f"{int(num)} mm"
+                except ValueError:
+                    continue
+        
         return "NOT FOUND"

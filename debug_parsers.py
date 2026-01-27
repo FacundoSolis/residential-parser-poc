@@ -13,7 +13,7 @@ from src.matrix_generator import MatrixGenerator
 if len(sys.argv) > 1:
     folder = Path(sys.argv[1])
 else:
-    folder = Path("data/ALEGRE SANTA CRUZ MARIA PILAR")
+    folder = Path("data/ZALAMA LORA BENITO/ZALAMA LORA BENITO")
 
 print("="*80)
 print("🐛 DEBUG: Parsing individual documents")
@@ -50,7 +50,10 @@ if 'CERTIFICADO' in mg.parsed_data:
     print(f"  catastral_ref: '{cert.get('catastral_ref', '')}'")
     print(f"  address: '{cert.get('address', '')}'")
     print(f"  b: '{cert.get('b', '')}'")
+    print(f"  surface: '{cert.get('surface', '')}'")
     print(f"  calculation_methodology: '{cert.get('calculation_methodology', '')}'")
+    print(f"  isolation_type: '{cert.get('isolation_type', '')}'")
+    print(f"  isolation_thickness: '{cert.get('isolation_thickness', '')}'")
 else:
     print("  ❌ NOT FOUND")
 
@@ -61,6 +64,7 @@ if 'CEE' in mg.parsed_data:
     print(f"  address: '{cee.get('address', '')}'")
     print(f"  catastral_ref: '{cee.get('catastral_ref', '')}'")
     print(f"  certification_date: '{cee.get('certification_date', '')}'")
+    print(f"  climatic_zone: '{cee.get('climatic_zone', '')}'")
 else:
     print("  ❌ NOT FOUND")
 
@@ -79,6 +83,14 @@ print("\n🔹 FICHA:")
 if 'FICHA' in mg.parsed_data:
     ficha = mg.parsed_data['FICHA']
     print(f"  act_code: '{ficha.get('act_code', '')}'")
+    print(f"  sell_price: '{ficha.get('sell_price', '')}'")
+    print(f"  fp: '{ficha.get('fp', '')}'")
+    print(f"  ui: '{ficha.get('ui', '')}'")
+    print(f"  uf: '{ficha.get('uf', '')}'")
+    print(f"  surface: '{ficha.get('surface', '')}'")
+    print(f"  start_date: '{ficha.get('start_date', '')}'")
+    print(f"  finish_date: '{ficha.get('finish_date', '')}'")
+    print(f"  lifespan: '{ficha.get('lifespan', '')}'")
 else:
     print("  ❌ NOT FOUND")
 
@@ -96,9 +108,22 @@ else:
 print("\n🔹 FACTURA:")
 if 'FACTURA' in mg.parsed_data:
     fact = mg.parsed_data['FACTURA']
-    print(f"  homeowner_name: '{fact.get('homeowner_name', '')}'")
-    print(f"  homeowner_address: '{fact.get('homeowner_address', '')}'")
     print(f"  invoice_number: '{fact.get('invoice_number', '')}'")
+    print(f"  invoice_date: '{fact.get('invoice_date', '')}'")
+    print(f"  homeowner_name: '{fact.get('homeowner_name', '')}'")
+    print(f"  homeowner_dni: '{fact.get('homeowner_dni', '')}'")
+    print(f"  homeowner_address: '{fact.get('homeowner_address', '')}'")
+    print(f"  homeowner_email: '{fact.get('homeowner_email', '')}'")
+    print(f"  homeowner_phone: '{fact.get('homeowner_phone', '')}'")
+    print(f"  subtotal: '{fact.get('subtotal', '')}'")
+    print(f"  deduction: '{fact.get('deduction', '')}'")
+    print(f"  amount: '{fact.get('amount', '')}'")
+    print(f"  installer_name: '{fact.get('installer_name', '')}'")
+    print(f"  installer_address: '{fact.get('installer_address', '')}'")
+    print(f"  installer_cif: '{fact.get('installer_cif', '')}'")
+    print(f"  isolation_type: '{fact.get('isolation_type', '')}'")
+    print(f"  isolation_thickness: '{fact.get('isolation_thickness', '')}'")
+    print(f"  s: '{fact.get('s', '')}'")
 else:
     print("  ❌ NOT FOUND")
 
