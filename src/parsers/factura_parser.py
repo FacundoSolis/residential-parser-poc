@@ -286,6 +286,12 @@ class FacturaParser(BaseDocumentParser):
     
     def _extract_isolation_type(self) -> str:
         """Extract isolation type/material (solo nombre, sin saltos de línea ni números)"""
+        # First, try to find the type directly
+        type_match = re.search(r'tipo\s+(Soplado|Rollo)', self.text, re.IGNORECASE)
+        if type_match:
+            return type_match.group(1).upper()
+        
+        # Fallback to product name
         patterns = [
             (r'URSA\s+[A-Z0-9\-]+', 0),
             (r'ROCKWOOL\s+[A-Z0-9\-]+', 0),
@@ -305,9 +311,12 @@ class FacturaParser(BaseDocumentParser):
                 # Elimina números al final (como superficie)
                 product = re.sub(r'\s*\d+$', '', product).strip()
                 # Filtrar palabras irrelevantes
-                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA', 'PERMITE', 'DE', 'ROLLO', 'SOPLADO']):
+                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA', 'PERMITE', 'DE']):
                     # Evitar frases largas
-                    product = re.split(r'\s+(PERMITE|DE|ROLLO|SOPLADO|Y|EN|CON)\b', product, 1)[0].strip()
+                    product = re.split(r'\s+(PERMITE|DE|Y|EN|CON)\b', product, 1)[0].strip()
+                    # If URSA, assume SOPLADO
+                    if 'URSA' in product.upper():
+                        return 'SOPLADO'
                     return product
         return "NOT FOUND"
     

@@ -219,6 +219,8 @@ class ContratoParser(BaseDocumentParser):
                 num_value = int(value)
                 if num_value < 500:
                     return "NOT FOUND"
+                if num_value > 100000:
+                    num_value //= 100  # Corregir valores altos como 2264400 -> 22644
                 return str(num_value)
             except ValueError:
                 return value

@@ -82,12 +82,8 @@ class DeclaracionParser(BaseDocumentParser):
             if surface_ctx:
                 surface = surface_ctx
 
-        # 8. Tipo de aislamiento
-        isolation_type = self._extract_isolation_type()
-        if not isolation_type or isolation_type == "NOT FOUND":
-            iso_ctx = fallback_context("isolation_type", match_name=name, match_dni=dni)
-            if iso_ctx:
-                isolation_type = iso_ctx
+        # 8. Tipo de aislamiento - DESHABILITADO PARA DECLARACION
+        isolation_type = "NOT FOUND"
 
         # 9. Firma (no tiene sentido fallback)
         signature = self._check_signature()

@@ -49,6 +49,7 @@ class FichaParser(BaseDocumentParser):
             'surface': self._extract_surface(t),
             'climatic_zone': self._extract_climatic_zone(t),
             'isolation_thickness': self._extract_isolation_thickness(t),
+            'lifespan': self._extract_lifespan(t),
         }
 
     def _extract_homeowner_name(self, text: str) -> str:
@@ -250,6 +251,39 @@ class FichaParser(BaseDocumentParser):
             r'(?:grosor\s*aislante)[:\s]*([0-9.,]+)',
         ]
         return self._find_first_pattern(text, patterns)
+
+    def _extract_energy_savings(self, text: str) -> str:
+        """Extract energy savings from ficha"""
+        m = re.search(r"(\d[\d\s.,]{2,})\s*k[wW]?[hH]\s*/\s*a(?:ñ|n)o", text, re.IGNORECASE)
+        if m:
+            raw = m.group(1)
+            value = re.sub(r"[^\d]", "", raw)
+            if not value:
+                return ""
+            try:
+                num_value = int(value)
+                if num_value < 500:
+                    return ""
+                if num_value > 100000:
+                    num_value //= 100
+                return str(num_value)
+            except ValueError:
+                return value
+        return ""
+
+    def _extract_lifespan(self, text: str) -> str:
+        """Extract lifespan from ficha"""
+        patterns = [
+            r'(?:vida\s*útil|duración|lifespan)[:\s]*([0-9]+)',
+            r'([0-9]+)\s*(?:años|año)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                result = match.group(1).strip()
+                if result.isdigit() and 1 <= int(result) <= 100:  # reasonable lifespan
+                    return result
+        return ""
 
     def _find_first_pattern(self, text: str, patterns: list) -> str:
         """Find first matching pattern"""

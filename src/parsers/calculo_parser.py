@@ -41,6 +41,7 @@ class CalculoParser:
                 'ae': self._extract_ae(ws),
                 'estado': self._extract_estado(ws),
                 'calculation_methodology': self._extract_methodology(ws),
+                'b': self._extract_b(ws),
             }
             
             return result
@@ -209,6 +210,17 @@ class CalculoParser:
                    if row[20] is not None:
                         return self._format_kwh(row[20])
 
+        except:
+            pass
+        return "NOT FOUND"
+    
+    def _extract_b(self, ws) -> str:
+        """Extract b value - same row as RES, column V (index 21)"""
+        try:
+            for row in ws.iter_rows(min_row=10, max_row=15, values_only=True):
+                if len(row) > 21 and row[14] is not None and 'RES' in str(row[14]):
+                    if row[21] is not None:
+                        return self._format_decimal_comma(row[21])
         except:
             pass
         return "NOT FOUND"

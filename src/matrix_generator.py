@@ -262,7 +262,7 @@ class MatrixGenerator:
                 best_name = n
                 break
 
-        ws[f'C{current_row}'] = contr_name
+        ws[f'C{current_row}'] = contr_name if contr_name else best_name
         ws[f'E{current_row}'] = decl_name
         ws[f'F{current_row}'] = fact_name
         ws[f'K{current_row}'] = best_name
@@ -485,7 +485,8 @@ class MatrixGenerator:
 
         # b (surface coefficient / coef. zona)
         ws[f'B{current_row}'] = 'b'
-        # Puedes rellenar aquí si tienes el valor, si no, dejar vacío
+        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'b'))
+        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'b'))
         current_row += 1
 
         # Climatic zone
@@ -494,12 +495,6 @@ class MatrixGenerator:
         ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'climatic_zone')  # E1
         ws[f'I{current_row}'] = self._get_value('CEE', 'climatic_zone')  # Agregar CEE
         ws[f'L{current_row}'] = ""  # OJO: 74 NO es zona, es G
-        current_row += 1
-
-        # Isolation type
-        ws[f'B{current_row}'] = 'Isolation type'
-        ws[f'F{current_row}'] = self._get_value('FACTURA', 'isolation_type')
-        ws[f'H{current_row}'] = self._get_value('CERTIFICADO', 'isolation_type')
         current_row += 1
 
         # G (surface coefficient / coef. zona) -> en tu caso 74
@@ -545,39 +540,61 @@ class MatrixGenerator:
         ws[f'L{current_row}'] = ""  # NO poner 0,83 aquí
 
         current_row += 1
-
         # Photos (firma del Cedente desde el CONTRATO)
         ws[f'B{current_row}'] = 'Photos'
 
-        # Dale altura a la fila para que quepa la imagen (ajusta si hace falta)
+        # Dale altura a la fila para que quepa la imagen
         ws.row_dimensions[current_row].height = 110
 
+        # ✅ CAMBIO 1: Limpiar las celdas ANTES de insertar imágenes
+        ws[f'C{current_row}'] = None
+        ws[f'E{current_row}'] = None
+
+        # ✅ CAMBIO 2: Crear directorio temporal
+        tmp_dir = Path(output_path).parent / "_tmp_assets"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # ✅ CAMBIO 3: Extraer e insertar firma del CONTRATO (columna C)
         contrato_pdf = str(self.file_mapping.get("CONTRATO", ""))
         if contrato_pdf.lower().endswith(".pdf") and os.path.exists(contrato_pdf):
-            tmp_dir = Path(output_path).parent / "_tmp_assets"
-            tmp_dir.mkdir(parents=True, exist_ok=True)
             img_path = str(tmp_dir / "contrato_firma_cedente.png")
             try:
                 self._extract_cedente_signature(contrato_pdf, img_path)
-                # Columna C = CONTRATO (como el template)
-                self._insert_image(ws, f"C{current_row}", img_path, width_px=260)
-                ws[f'C{current_row}'] = ""  # por si acaso, para que no se mezcle texto
+                # Verificar que la imagen se creó correctamente
+                if os.path.exists(img_path) and os.path.getsize(img_path) > 0:
+                    self._insert_image(ws, f"C{current_row}", img_path, width_px=260)
+                    print(f"   ✅ Firma CONTRATO insertada en C{current_row}")
+                    # ❌ NO PONGAS: ws[f'C{current_row}'] = ""
+                else:
+                    ws[f'C{current_row}'] = "Signature image empty"
             except Exception as e:
-                ws[f'C{current_row}'] = f"Signature extract error: {e}"
+                ws[f'C{current_row}'] = f"Signature error: {str(e)[:40]}"
+                print(f"   ❌ Error firma CONTRATO: {e}")
 
-        declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
-        if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
-            # Usar la misma imagen de firma que el CONTRATO (cedente)
-            img_path_decl = str(tmp_dir / "contrato_firma_cedente.png")
-            if os.path.exists(img_path_decl):
-                # Columna E = DECLARACION
-                self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
-                ws[f'E{current_row}'] = ""  # por si acaso
-            else:
-                ws[f'E{current_row}'] = "Signature image not found"
+            # ✅ CAMBIO 4: Extraer e insertar firma de DECLARACION (columna E)
+            declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
+            if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
+                img_path_decl = str(tmp_dir / "declaracion_firma_cedente.png")
+                try:
+                    self._extract_declaracion_signature(declaracion_pdf, img_path_decl)
+                    # Verificar que la imagen se creó correctamente
+                    if os.path.exists(img_path_decl) and os.path.getsize(img_path_decl) > 0:
+                        self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
+                        print(f"   ✅ Firma DECLARACION insertada en E{current_row}")
+                        # ❌ NO PONGAS: ws[f'E{current_row}'] = ""
+                    else:
+                        # Fallback: intentar usar la firma del CONTRATO
+                        img_path_contrato = str(tmp_dir / "contrato_firma_cedente.png")
+                        if os.path.exists(img_path_contrato) and os.path.getsize(img_path_contrato) > 0:
+                            self._insert_image(ws, f"E{current_row}", img_path_contrato, width_px=260)
+                            print(f"   ✅ Firma CONTRATO reutilizada en E{current_row}")
+                        else:
+                            ws[f'E{current_row}'] = "Signature not found"
+                except Exception as e:
+                    ws[f'E{current_row}'] = f"Signature error: {str(e)[:40]}"
+                    print(f"   ❌ Error firma DECLARACION: {e}")
 
         current_row += 1
-
                 
         # ==================== INSTALLER SECTION ====================
         ws[f'A{current_row}'] = 'INSTALLER'
@@ -787,36 +804,49 @@ class MatrixGenerator:
         return m.group(1) if m else ""
 
     def _extract_cedente_signature(self, pdf_path: str, out_path: str) -> str:
+        """
+        Extrae la firma del cedente del CONTRATO.
+        ✅ Siempre usa la última página del PDF.
+        """
         doc = fitz.open(pdf_path)
-        page = doc[5]  # pág 6/7 (idx 5)
-
+        total_pages = len(doc)
+        
+        # Siempre usar la última página
+        page = doc[-1]
+        
         w, h = page.rect.width, page.rect.height
-
-        # Tu clip "perfecto"
-        x0 = w * 0.05
-        x1 = w * 0.50
-        y0 = h * 0.68
-        y1 = h * 0.90
-
+        # Cuadrado inferior izquierdo: desde 70% abajo
+        x0 = 0
+        x1 = w * 0.5
+        y0 = h * 0.7
+        y1 = h * 0.95
+        
         clip = fitz.Rect(x0, y0, x1, y1)
-
+        
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-        zoom = 3
+        zoom = 2  # Reducir zoom para mejor calidad
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
         pix.save(out_path)
+        
+        print(f"   📝 Firma extraída de CONTRATO página {total_pages}/{total_pages}, área: x0={x0:.0f}, y0={y0:.0f}, x1={x1:.0f}, y1={y1:.0f}")
+        doc.close()
         return out_path
 
     def _extract_declaracion_signature(self, pdf_path: str, out_path: str) -> str:
+        """
+        Extrae firma de DECLARACIÓN (última página del documento).
+        """
         doc = fitz.open(pdf_path)
+        total_pages = len(doc)
         page = doc[-1]  # última página para DECLARACIÓN
 
         w, h = page.rect.width, page.rect.height
 
-        # Clip igual al de contrato
-        x0 = w * 0.05
-        x1 = w * 0.50
-        y0 = h * 0.68
-        y1 = h * 0.90
+        # Clip en cuadrado inferior izquierdo: desde 70% abajo
+        x0 = 0
+        x1 = w * 0.5
+        y0 = h * 0.7
+        y1 = h * 0.95
 
         clip = fitz.Rect(x0, y0, x1, y1)
 
@@ -824,6 +854,9 @@ class MatrixGenerator:
         zoom = 3
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
         pix.save(out_path)
+        
+        print(f"   📝 Firma extraída de DECLARACION página {total_pages}/{total_pages}")
+        doc.close()
         return out_path
 
     def _clean_ocr_text(self, v: Any) -> str:
