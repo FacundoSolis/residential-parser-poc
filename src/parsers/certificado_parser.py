@@ -241,7 +241,27 @@ class CertificadoParser(BaseDocumentParser):
         return f"{m.group(1)} mm" if m else "NOT FOUND"
     
     def _extract_isolation_type(self) -> str:
-        return "MANTA"
+        t = self.text or ""
+        patterns = [
+            (r'URSA\s+[A-Z0-9\-]+', 0),
+            (r'ROCKWOOL\s+[A-Z0-9\-]+', 0),
+            (r'KNAUF\s+[A-Z0-9\-]+', 0),
+            (r'ISOVER\s+[A-Z0-9\-]+', 0),
+            (r'producto[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'aislamiento\s+térmico\s+de\s+([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'aislamiento\s+térmico[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'material[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
+        ]
+        for pattern, group_idx in patterns:
+            match = re.search(pattern, t, re.IGNORECASE)
+            if match:
+                product = match.group(group_idx).strip()
+                product = product.split('\n')[0].strip()
+                product = re.sub(r'\s*\d+$', '', product).strip()
+                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA', 'PERMITE', 'DE', 'ROLLO', 'SOPLADO']):
+                    product = re.split(r'\s+(PERMITE|DE|ROLLO|SOPLADO|Y|EN|CON)\b', product, 1)[0].strip()
+                    return product
+        return "NOT FOUND"
 
 
 

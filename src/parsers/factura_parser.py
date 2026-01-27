@@ -285,22 +285,30 @@ class FacturaParser(BaseDocumentParser):
         return "NOT FOUND"
     
     def _extract_isolation_type(self) -> str:
-        """Extract isolation type/material"""
+        """Extract isolation type/material (solo nombre, sin saltos de línea ni números)"""
         patterns = [
-            (r'URSA\s+[A-Z\'\d]+', 0),  # no group
-            (r'producto[:\s]*([A-Z][A-Z\s\'R\d]+)', 1),  # has group
-            (r'aislamiento\s+térmico\s+([a-z\s]+)', 1),  # has group
-            (r'([A-Z][A-Z\s\'R\d]{5,})', 1),  # has group
+            (r'URSA\s+[A-Z0-9\-]+', 0),
+            (r'ROCKWOOL\s+[A-Z0-9\-]+', 0),
+            (r'KNAUF\s+[A-Z0-9\-]+', 0),
+            (r'ISOVER\s+[A-Z0-9\-]+', 0),
+            (r'producto[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'aislamiento\s+térmico\s+de\s+([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'aislamiento\s+térmico[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
+            (r'material[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
         ]
-        
         for pattern, group_idx in patterns:
             match = re.search(pattern, self.text, re.IGNORECASE)
             if match:
                 product = match.group(group_idx).strip()
-                # Filter out common non-product words
-                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA']):
+                # Elimina saltos de línea y todo lo que venga después
+                product = product.split('\n')[0].strip()
+                # Elimina números al final (como superficie)
+                product = re.sub(r'\s*\d+$', '', product).strip()
+                # Filtrar palabras irrelevantes
+                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA', 'PERMITE', 'DE', 'ROLLO', 'SOPLADO']):
+                    # Evitar frases largas
+                    product = re.split(r'\s+(PERMITE|DE|ROLLO|SOPLADO|Y|EN|CON)\b', product, 1)[0].strip()
                     return product
-        
         return "NOT FOUND"
     
     def _extract_isolation_thickness(self) -> str:

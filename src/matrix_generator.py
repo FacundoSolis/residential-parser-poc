@@ -163,16 +163,33 @@ class MatrixGenerator:
             print(f"   {doc_type}: {filepath.name}")
         
         print(f"\n🔍 Parsing...")
-        for doc_type, filepath in found_docs.items():
+        # Procesa primero CONTRATO y FACTURA, luego el resto, DECLARACION después
+        ordered_types = []
+        for t in ["CONTRATO", "FACTURA"]:
+            if t in found_docs:
+                ordered_types.append(t)
+        for t in found_docs:
+            if t not in ordered_types and t != "DECLARACION":
+                ordered_types.append(t)
+        if "DECLARACION" in found_docs:
+            ordered_types.append("DECLARACION")
+
+        for doc_type in ordered_types:
+            filepath = found_docs[doc_type]
             self.file_mapping[doc_type] = filepath
-            
+
             if doc_type not in self.PARSERS:
                 continue
-                
+
             parser_class = self.PARSERS[doc_type]
-            
+
             try:
-                parser = parser_class(str(filepath))
+                if doc_type == 'DECLARACION':
+                    parser = parser_class(str(filepath))
+                    # Pasa el contexto de todos los datos parseados hasta ahora
+                    parser.context_data = dict(self.parsed_data)
+                else:
+                    parser = parser_class(str(filepath))
                 data = parser.parse()
                 self.parsed_data[doc_type] = data
                 print(f"   ✓ Parsed {doc_type}")
@@ -229,51 +246,47 @@ class MatrixGenerator:
         ws[f'A{current_row}'] = 'HOME OWNER'
         ws[f'A{current_row}'].font = section_font
         
-        # Name
+
         # Name
         ws[f'B{current_row}'] = 'Name'
-
         contr_name = self._get_value('CONTRATO', 'homeowner_name')
         decl_name = self._get_value('DECLARACION', 'homeowner_name')
         fact_name  = self._get_value('FACTURA', 'homeowner_name')
         dni_name   = self._get_value('DNI', 'name')
         calc_name  = self._get_value('CALCULO', 'client_name')
 
-        # Fallback: if DNI document doesn't have valid name, use from FACTURA
-        name_val = dni_name
-        if not self._is_valid_cell_value(name_val, min_len=6):
-            name_val = fact_name
+        # Fallback para columna K (DNI): si no hay nombre en DNI, usa DECLARACION o FACTURA
+        best_name = ''
+        for n in [dni_name, decl_name, fact_name, contr_name]:
+            if n and n != 'NOT FOUND':
+                best_name = n
+                break
 
-        # Columna C: CONTRATO
         ws[f'C{current_row}'] = contr_name
-
-        # Mantén las otras columnas como están (sirven para comparar)
         ws[f'E{current_row}'] = decl_name
         ws[f'F{current_row}'] = fact_name
-        ws[f'K{current_row}'] = name_val
+        ws[f'K{current_row}'] = best_name
         ws[f'L{current_row}'] = calc_name
-
         current_row += 1
 
         # DNI
         ws[f'B{current_row}'] = 'DNI'
-
         contr_dni = self._get_value('CONTRATO', 'homeowner_dni')
         decl_dni  = self._get_value('DECLARACION', 'homeowner_dni')
         fact_dni  = self._get_value('FACTURA', 'homeowner_dni')
         dni_num   = self._get_value('DNI', 'dni_number')
 
-        # Fallback: if DNI document doesn't have it, use from FACTURA
-        if dni_num == "NOT FOUND":
-            dni_num = fact_dni
+        # Fallback para columna K (DNI): si no hay en DNI, usa DECLARACION o FACTURA
+        best_dni = ''
+        for d in [dni_num, decl_dni, fact_dni, contr_dni]:
+            if d and d != 'NOT FOUND':
+                best_dni = d
+                break
 
-        # Columna C: usa solo CONTRATO
         ws[f'C{current_row}'] = contr_dni
-
         ws[f'E{current_row}'] = decl_dni
         ws[f'F{current_row}'] = fact_dni
-        ws[f'K{current_row}'] = dni_num
-
+        ws[f'K{current_row}'] = best_dni
         current_row += 1
 
         
@@ -286,9 +299,14 @@ class MatrixGenerator:
         fact_addr  = self._get_value('FACTURA', 'homeowner_address')
         cert_addr  = self._get_value('CERTIFICADO', 'address')
 
-        ws[f'C{current_row}'] = contr_addr
+        # Si decl_addr es vacío o NOT FOUND, usa contr_addr
+        decl_addr_excel = decl_addr
+        if not self._is_valid_cell_value(decl_addr, min_len=5):
+            if self._is_valid_cell_value(contr_addr, min_len=5):
+                decl_addr_excel = contr_addr
 
-        ws[f'E{current_row}'] = decl_addr
+        ws[f'C{current_row}'] = contr_addr
+        ws[f'E{current_row}'] = decl_addr_excel
         ws[f'F{current_row}'] = fact_addr
 
         current_row += 1
@@ -367,6 +385,9 @@ class MatrixGenerator:
         act_cert  = self._get_value('CERTIFICADO', 'address')
         act_decl = self._clean_ocr_text(self._get_value('DECLARACION', 'homeowner_address'))
 
+        # Depuración en español para ver los valores de dirección
+        print(f"[DEPURACIÓN] Dirección ACT - CONTRATO: '{act_contr}' | DECLARACION: '{act_decl}' | FACTURA: '{act_fact}'")
+
         ws[f'C{current_row}'] = act_contr
         ws[f'E{current_row}'] = act_decl
         ws[f'F{current_row}'] = act_fact
@@ -387,9 +408,14 @@ class MatrixGenerator:
         cee_cat   = self._get_value('CEE', 'catastral_ref')
         reg_cat   = self._get_value('REGISTRO', 'catastral_ref')
 
-        ws[f'C{current_row}'] = contr_cat
+        # Si decl_cat es vacío o NOT FOUND, usa contr_cat
+        decl_cat_excel = decl_cat
+        if not self._is_valid_cell_value(decl_cat, min_len=8):
+            if self._is_valid_cell_value(contr_cat, min_len=8):
+                decl_cat_excel = contr_cat
 
-        ws[f'E{current_row}'] = decl_cat
+        ws[f'C{current_row}'] = contr_cat
+        ws[f'E{current_row}'] = decl_cat_excel
         ws[f'H{current_row}'] = cert_cat
         ws[f'I{current_row}'] = cee_cat
         ws[f'J{current_row}'] = reg_cat
@@ -455,6 +481,11 @@ class MatrixGenerator:
         ws[f'F{current_row}'] = self._norm_num(self._get_value('FACTURA', 's'))
         ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'surface'))
         ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 's'))
+        current_row += 1
+
+        # b (surface coefficient / coef. zona)
+        ws[f'B{current_row}'] = 'b'
+        # Puedes rellenar aquí si tienes el valor, si no, dejar vacío
         current_row += 1
 
         # Climatic zone

@@ -13,17 +13,96 @@ class DeclaracionParser(BaseDocumentParser):
     def parse(self) -> Dict[str, Any]:
         self.extract_text()
 
+        # Fallback helpers
+        def fallback_context(field, prefer_types=None, match_name=None, match_dni=None):
+            context = getattr(self, 'context_data', None)
+            if not context or not isinstance(context, dict):
+                return None
+            prefer_types = prefer_types or ["CONTRATO", "FACTURA", "CEE", "CEE_FINAL"]
+            for doc_type in prefer_types:
+                docs = context.get(doc_type)
+                if not docs:
+                    continue
+                if isinstance(docs, dict):
+                    docs = [docs]
+                for doc in docs:
+                    # Si se pide coincidencia de nombre/dni, filtra
+                    if match_name and match_dni:
+                        n2 = doc.get("homeowner_name") or doc.get("client_name")
+                        d2 = doc.get("homeowner_dni") or doc.get("dni_number")
+                        if not (n2 and d2 and n2.strip().upper() == match_name.strip().upper() and d2.strip().upper() == match_dni.strip().upper()):
+                            continue
+                    val = doc.get(field)
+                    if val and val != "NOT FOUND":
+                        return val
+            return None
+
+        # 1. Nombre
+        name = self._extract_homeowner_name()
+        if not name or name == "NOT FOUND":
+            name_ctx = fallback_context("homeowner_name")
+            if name_ctx:
+                name = name_ctx
+
+        # 2. DNI
+        dni = self._extract_homeowner_dni()
+        if not dni or dni == "NOT FOUND":
+            dni_ctx = fallback_context("homeowner_dni")
+            if dni_ctx:
+                dni = dni_ctx
+
+        # 3. Dirección (ya tiene fallback propio)
+        address = self._extract_homeowner_address()
+
+        # 4. Referencia catastral
+        catastral = self._extract_catastral_ref()
+        if not catastral or catastral == "NOT FOUND":
+            catastral_ctx = fallback_context("catastral_ref", match_name=name, match_dni=dni)
+            if catastral_ctx:
+                catastral = catastral_ctx
+
+        # 5. Código de actuación
+        act_code = self._extract_act_code()
+        if not act_code or act_code == "NOT FOUND":
+            act_code_ctx = fallback_context("act_code", match_name=name, match_dni=dni)
+            if act_code_ctx:
+                act_code = act_code_ctx
+
+        # 6. Ahorro energético
+        energy_savings = self._extract_energy_savings()
+        if not energy_savings or energy_savings == "NOT FOUND":
+            energy_ctx = fallback_context("energy_savings", match_name=name, match_dni=dni)
+            if energy_ctx:
+                energy_savings = energy_ctx
+
+        # 7. Superficie
+        surface = self._extract_surface()
+        if not surface or surface == "NOT FOUND":
+            surface_ctx = fallback_context("surface", match_name=name, match_dni=dni)
+            if surface_ctx:
+                surface = surface_ctx
+
+        # 8. Tipo de aislamiento
+        isolation_type = self._extract_isolation_type()
+        if not isolation_type or isolation_type == "NOT FOUND":
+            iso_ctx = fallback_context("isolation_type", match_name=name, match_dni=dni)
+            if iso_ctx:
+                isolation_type = iso_ctx
+
+        # 9. Firma (no tiene sentido fallback)
+        signature = self._check_signature()
+
         return {
             "document_type": "DECLARACION",
-            "homeowner_name": self._extract_homeowner_name(),
-            "homeowner_dni": self._extract_homeowner_dni(),
-            "homeowner_address": self._extract_homeowner_address(),
-            "catastral_ref": self._extract_catastral_ref(),
-            "act_code": self._extract_act_code(),
-            "energy_savings": self._extract_energy_savings(),
-            "surface": self._extract_surface(),
-            "isolation_type": self._extract_isolation_type(),
-            "signature": self._check_signature(),
+            "homeowner_name": name,
+            "homeowner_dni": dni,
+            "homeowner_address": address,
+            "catastral_ref": catastral,
+            "act_code": act_code,
+            "energy_savings": energy_savings,
+            "surface": surface,
+            "isolation_type": isolation_type,
+            "signature": signature,
         }
 
     # ------------------------
@@ -165,7 +244,7 @@ class DeclaracionParser(BaseDocumentParser):
 
     def _extract_homeowner_address(self) -> str:
         t = self.text or ""
-
+        debug_label = "[DECLARACION] Dirección extraída:"
         def is_garbage(val: str) -> bool:
             v = (val or "").strip()
             if not v:
@@ -173,28 +252,79 @@ class DeclaracionParser(BaseDocumentParser):
             v_low = v.lower()
             if v_low in {"teléfono", "telefono", "tel", "telf", "tfno", "firma", "firmado"}:
                 return True
-            # basura corta tipo "C" / "CL"
             if v.strip().upper() in {"C", "CL", "CALLE", "AV", "AVD", "S/N"}:
                 return True
             return False
 
+        # 1) Patrones clásicos
         patterns = [
-            # 1) Domicilio: ... (hasta CP / salto / Teléfono / Firma)
             r"Domicilio\s+(.+?)(?=\n|,\s*\d{5}|CP|C\.P\.|Tel|Firma)",
-            # 2) Dirección: ...
             r"Direcci[oó]n\s+(.+?)(?=\n|CP|C\.P\.|Tel|Firma)",
-            # 3) Si viene en la siguiente línea (OCR típico)
             r"(?:Domicilio|Direcci[oó]n)\s*[:\-]?\s*\n\s*(.{10,220})",
         ]
-
         for pattern in patterns:
             m = re.search(pattern, t, re.IGNORECASE | re.DOTALL)
             if m:
                 val = re.sub(r"\s+", " ", m.group(1)).strip().rstrip(",;.")
                 val = self._clean_address(val)
-                if not is_garbage(val):
+                if not is_garbage(val) and val != "NOT FOUND":
+                    print(f"{debug_label} (patrón clásico) '{val}'")
                     return val
+                # Si el valor es 'NOT FOUND', ignora y sigue buscando
 
+        # 2) Fallback: busca la primera línea larga con número (como en contrato)
+        lines = [ln.strip() for ln in t.splitlines() if len(ln.strip()) > 10]
+        candidates = [ln for ln in lines if re.search(r"\d", ln) and not is_garbage(ln)]
+        if candidates:
+            # Prefiere la más larga con número
+            best = max(candidates, key=len)
+            best = self._clean_address(best)
+            if not is_garbage(best):
+                print(f"{debug_label} (línea larga con número) '{best}'")
+                return best
+
+        # 3) Fallback: busca cualquier cosa que parezca dirección
+        m = re.search(r"([A-ZÁÉÍÓÚÑ]{2,}\s+\d{1,4}(?:[\w\s,.-]{0,40})\d{5})", t, re.IGNORECASE)
+        if m:
+            val = self._clean_address(m.group(1))
+            if not is_garbage(val):
+                print(f"{debug_label} (regex dirección) '{val}'")
+                return val
+
+        # 4) Fallback: buscar dirección en otros documentos si hay acceso a todos los datos
+        # Busca en self.context_data si está disponible (debe ser dict con otros docs)
+        name = self._extract_homeowner_name()
+        dni = self._extract_homeowner_dni()
+        context = getattr(self, 'context_data', None)
+        if context and isinstance(context, dict):
+            # Busca en CONTRATO primero, aunque no coincida nombre/dni
+            contrato = context.get("CONTRATO")
+            if contrato:
+                if isinstance(contrato, dict):
+                    contrato = [contrato]
+                for doc in contrato:
+                    addr = doc.get("homeowner_address")
+                    if addr and not is_garbage(addr) and addr != "NOT FOUND":
+                        print(f"{debug_label} (copiado de CONTRATO) '{addr}'")
+                        return addr
+            # Si no hay en CONTRATO, busca en FACTURA, CEE, CEE_FINAL con coincidencia de nombre/dni
+            for doc_type in ["FACTURA", "CEE", "CEE_FINAL"]:
+                docs = context.get(doc_type)
+                if not docs:
+                    continue
+                if isinstance(docs, dict):
+                    docs = [docs]
+                for doc in docs:
+                    n2 = doc.get("homeowner_name") or doc.get("client_name")
+                    d2 = doc.get("homeowner_dni") or doc.get("dni_number")
+                    if n2 and d2 and n2.strip().upper() == name.strip().upper() and d2.strip().upper() == dni.strip().upper():
+                        for addr_field in ["homeowner_address", "address", "location"]:
+                            addr = doc.get(addr_field)
+                            if addr and not is_garbage(addr) and addr != "NOT FOUND":
+                                print(f"{debug_label} (copiado de {doc_type} campo {addr_field}) '{addr}'")
+                                return addr
+
+        print(f"{debug_label} (NO ENCONTRADA) 'NOT FOUND'")
         return "NOT FOUND"
 
     def _extract_catastral_ref(self) -> str:
