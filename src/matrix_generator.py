@@ -815,11 +815,11 @@ class MatrixGenerator:
         page = doc[-1]
         
         w, h = page.rect.width, page.rect.height
-        # Cuadrado inferior izquierdo: desde 70% abajo
+        # Cuadrado inferior izquierdo: desde 60% abajo, más arriba
         x0 = 0
         x1 = w * 0.5
-        y0 = h * 0.7
-        y1 = h * 0.95
+        y0 = h * 0.6
+        y1 = h * 0.9
         
         clip = fitz.Rect(x0, y0, x1, y1)
         
@@ -842,16 +842,16 @@ class MatrixGenerator:
 
         w, h = page.rect.width, page.rect.height
 
-        # Clip en cuadrado inferior izquierdo: desde 70% abajo
-        x0 = 0
-        x1 = w * 0.5
-        y0 = h * 0.7
-        y1 = h * 0.95
+        # Clip ajustado: mover a la derecha, más espacio derecha, cortar arriba
+        x0 = w * 0.55
+        x1 = w
+        y0 = h * 0.65
+        y1 = h * 0.9
 
         clip = fitz.Rect(x0, y0, x1, y1)
 
         os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-        zoom = 3
+        zoom = 2  # Igual que CONTRATO para consistencia
         pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=clip, alpha=False)
         pix.save(out_path)
         
