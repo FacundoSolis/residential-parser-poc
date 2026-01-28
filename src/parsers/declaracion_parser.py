@@ -401,9 +401,39 @@ class DeclaracionParser(BaseDocumentParser):
 
         a = re.sub(r"\s+", " ", addr).strip()
 
-        # Quita prefijos específicos de basura OCR/plantilla
-        a = re.sub(r"de la instalación en que se ejecutó\s*", "", a, flags=re.IGNORECASE)
-        a = re.sub(r'^[!"]*\s*', '', a)  # Quita " ! al inicio
+        # Quita prefijos específicos de basura OCR/plantilla (más robusto)
+        # Borra la forma exacta que ya manejábamos
+        a = re.sub(r"de la instalación en que se ejecut[oó]\s*", "", a, flags=re.IGNORECASE)
+        # Si el texto contiene una referencia a "instalación" corrupta, intenta
+        # eliminar la parte de plantilla hasta la primera porción que parezca
+        # realmente una dirección (mayúscula + texto + número)
+        a = re.sub(r"de la instalaci[oó]n.*?(?=[A-ZÁÉÍÓÚÑ0-9])", "", a, flags=re.IGNORECASE)
+        if re.search(r"instalaci", a, re.IGNORECASE):
+            m = re.search(r"[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ\s\.\-]{2,}\d", a)
+            if m:
+                a = a[m.start():]
+            else:
+                a = re.sub(r"(?i)^.*?instalaci[óo]n\s*[:\-]?\s*", "", a)
+
+        a = re.sub(r'^[!"\s]*', '', a)  # Quita caracteres de inicio residuales
+
+        # Quita frases iniciales tipo "en que se" o similares que sobreviven
+        a = re.sub(r'^(?:en que se|en la que se|en que|para la instalaci[oó]n)\s*', '', a, flags=re.IGNORECASE)
+
+        # Elimina tokens iniciales claramente corruptos: palabras MAYÚSCULAS
+        # muy consonánticas (sin suficientes vocales) que preceden a la dirección
+        def _has_enough_vowels(tok: str) -> bool:
+            return len(re.findall(r'[AEIOUÁÉÍÓÚ]', tok, re.IGNORECASE)) >= 2
+
+        while True:
+            m = re.match(r'^([A-ZÁÉÍÓÚÑ]{3,})(?:\s+|$)', a)
+            if not m:
+                break
+            tok = m.group(1)
+            if _has_enough_vowels(tok) or '-' in tok or any(ch.isdigit() for ch in tok):
+                break
+            # corta el token corrupto y continúa
+            a = a[len(tok):].lstrip()
 
         # Quita prefijos típicos de plantilla/OCR
         a = re.sub(
@@ -427,6 +457,11 @@ class DeclaracionParser(BaseDocumentParser):
 
         # Limpieza final
         a = a.strip(" ,;.-")
+
+        # Si queda basura inicial, busca el primer indicio claro de calle/plaza
+        m = re.search(r"\b(?:PZ|PZA|PLAZA|CALLE|C\.?|AV(?:D?A)?|AVENIDA|PL|Pº|PSO|PASEO|RUA|R\.)\b", a, re.IGNORECASE)
+        if m and m.start() > 0:
+            a = a[m.start():].strip()
 
         # Si contiene teléfono o firma, no es dirección
         if re.search(r"Tel[eé]fono|Correo electr[oó]nico|Firma|Firmado", a, re.IGNORECASE):
