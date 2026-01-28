@@ -533,8 +533,12 @@ class MatrixGenerator:
 
         # b (surface coefficient / coef. zona)
         ws[f'B{current_row}'] = 'b'
-        ws[f'H{current_row}'] = self._norm_num(self._get_value('CERTIFICADO', 'b'))
-        ws[f'L{current_row}'] = self._norm_num(self._get_value('CALCULO', 'b'))
+        cert_b = self._get_value('CERTIFICADO', 'b')
+        calc_b = self._get_value('CALCULO', 'b')
+        # Prefer certificado.b when available; otherwise fallback to calculo.b
+        chosen_b = cert_b if cert_b and cert_b != 'NOT FOUND' else calc_b
+        ws[f'H{current_row}'] = self._norm_num(cert_b)
+        ws[f'L{current_row}'] = self._norm_num(chosen_b)
         current_row += 1
 
         # Climatic zone

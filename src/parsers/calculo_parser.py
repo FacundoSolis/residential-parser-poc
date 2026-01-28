@@ -3,6 +3,7 @@ Parser for CALCULO.xlsx files
 """
 
 import openpyxl
+import re
 from pathlib import Path
 from typing import Dict, Any
 
@@ -218,9 +219,28 @@ class CalculoParser:
         """Extract b value - same row as RES, column V (index 21)"""
         try:
             for row in ws.iter_rows(min_row=10, max_row=15, values_only=True):
-                if len(row) > 21 and row[14] is not None and 'RES' in str(row[14]):
-                    if row[21] is not None:
-                        return self._format_decimal_comma(row[21])
+                # Find the cell that contains 'RES' in this row (flexible column positions)
+                res_idx = None
+                for i, cell in enumerate(row):
+                    if cell is not None and 'RES' in str(cell):
+                        res_idx = i
+                        break
+                if res_idx is None:
+                    continue
+
+                # Prefer the original expected offset (index + 7 -> column V when RES at index 14)
+                target_idx = res_idx + 7
+                if target_idx < len(row) and row[target_idx] is not None:
+                    return self._format_decimal_comma(row[target_idx])
+
+                # Fallback: scan to the right of RES for the first numeric-like value
+                for j in range(res_idx + 1, len(row)):
+                    cell = row[j]
+                    if cell is None:
+                        continue
+                    s = str(cell).strip()
+                    if re.match(r"^\d+(?:[.,]\d+)?$", s):
+                        return self._format_decimal_comma(s)
         except:
             pass
         return "NOT FOUND"
