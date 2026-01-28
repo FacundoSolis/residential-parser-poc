@@ -31,6 +31,19 @@ class FichaParser(BaseDocumentParser):
     def parse(self) -> Dict[str, Any]:
         self.extract_text()
         t = self._normalize(self.text)
+        # Extract lifespan and provide fallback from context (CERTIFICADO/CONTRATO)
+        lifespan = self._extract_lifespan(t)
+        if not lifespan:
+            ctx = getattr(self, 'context_data', None)
+            if ctx and isinstance(ctx, dict):
+                # Prefer CERTIFICADO then CONTRATO
+                cert = ctx.get('CERTIFICADO')
+                if cert and isinstance(cert, dict):
+                    lifespan = cert.get('lifespan') or lifespan
+                if not lifespan:
+                    contr = ctx.get('CONTRATO')
+                    if contr and isinstance(contr, dict):
+                        lifespan = contr.get('lifespan') or lifespan
 
         return {
             'document_type': 'FICHA',
@@ -49,7 +62,7 @@ class FichaParser(BaseDocumentParser):
             'surface': self._extract_surface(t),
             'climatic_zone': self._extract_climatic_zone(t),
             'isolation_thickness': self._extract_isolation_thickness(t),
-            'lifespan': self._extract_lifespan(t),
+            'lifespan': lifespan or "",
         }
 
     def _extract_homeowner_name(self, text: str) -> str:
@@ -276,16 +289,33 @@ class FichaParser(BaseDocumentParser):
 
     def _extract_lifespan(self, text: str) -> str:
         """Extract lifespan from ficha"""
-        patterns = [
-            r'(?:vida\s*útil|duración|lifespan)[:\s]*([0-9]+)',
-            r'([0-9]+)\s*(?:años|año)',
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                result = match.group(1).strip()
-                if result.isdigit() and 1 <= int(result) <= 100:  # reasonable lifespan
-                    return result
+        # Normalize common OCR/encoding issues for matching
+        t = (text or "")
+        # Replace common accented variants and OCR mistakes
+        t_norm = t.replace("ú", "u").replace("ó", "o").replace("ñ", "n")
+        t_norm = t_norm.replace("años", "anos").replace("a\xc3\xb1os", "anos")
+
+        # Try explicit labels first: 'vida útil', 'duracion', 'lifespan'
+        m = re.search(r"(?:vida\s*util|vida\s*útil|duraci[oó]n|duracion|lifespan)[:\s\-]*([0-9]{1,3})", t_norm, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if val.isdigit() and 1 <= int(val) <= 100:
+                return val
+
+        # General fallback: any number followed by años/anos/years
+        m2 = re.search(r"\b([0-9]{1,3})\s*(?:a[nn]os|anos|years)\b", t_norm, re.IGNORECASE)
+        if m2:
+            val = m2.group(1).strip()
+            if val.isdigit() and 1 <= int(val) <= 100:
+                return val
+
+        # Last resort: any standalone small integer that looks like years near the word 'vida' or 'util'
+        m3 = re.search(r"(vida|util|lifespan).{0,30}?([0-9]{1,3})", t_norm, re.IGNORECASE)
+        if m3:
+            val = m3.group(2).strip()
+            if val.isdigit() and 1 <= int(val) <= 100:
+                return val
+
         return ""
 
     def _find_first_pattern(self, text: str, patterns: list) -> str:

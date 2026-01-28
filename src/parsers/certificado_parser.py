@@ -13,6 +13,8 @@ class CertificadoParser(BaseDocumentParser):
     def parse(self) -> Dict[str, Any]:
         """Extract all fields from Certificado"""
         self.extract_text()
+        # detect isolation type and whether it was inferred by brand
+        isolation_type, isolation_inferred = self._detect_isolation_type(self.text)
 
         result = {
             "document_type": "CERTIFICADO",
@@ -32,7 +34,8 @@ class CertificadoParser(BaseDocumentParser):
             "g": self._extract_g(),
             "b": self._extract_b(),
             "isolation_thickness": self._extract_isolation_thickness(),
-            "isolation_type": self._extract_isolation_type(),
+            "isolation_type": isolation_type,
+            "isolation_inferred_by_brand": isolation_inferred,
 
         }
 
@@ -253,15 +256,8 @@ class CertificadoParser(BaseDocumentParser):
         return f"{m.group(1)} mm" if m else "NOT FOUND"
     
     def _extract_isolation_type(self) -> str:
-        t = self.text or ""
-        # Look for "tipo Soplado" or "tipo Rollo"
-        m = re.search(r'tipo\s+(Soplado|Rollo)', t, re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-        # Fallback: if URSA, assume SOPLADO
-        if 'URSA' in t.upper():
-            return 'SOPLADO'
-        return "NOT FOUND"
+        """Extract isolation type using unified helper from BaseDocumentParser."""
+        return self._detect_isolation_type(self.text)
 
 
 

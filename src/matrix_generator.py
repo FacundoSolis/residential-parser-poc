@@ -184,12 +184,9 @@ class MatrixGenerator:
             parser_class = self.PARSERS[doc_type]
 
             try:
-                if doc_type == 'DECLARACION':
-                    parser = parser_class(str(filepath))
-                    # Pasa el contexto de todos los datos parseados hasta ahora
-                    parser.context_data = dict(self.parsed_data)
-                else:
-                    parser = parser_class(str(filepath))
+                parser = parser_class(str(filepath))
+                # Pasa el contexto de todos los datos parseados hasta ahora a TODOS los parsers
+                parser.context_data = dict(self.parsed_data)
                 data = parser.parse()
                 self.parsed_data[doc_type] = data
                 print(f"   ✓ Parsed {doc_type}")
@@ -484,8 +481,14 @@ class MatrixGenerator:
         # Lifespan
         ws[f'B{current_row}'] = 'Lifespan (años)'
         life = self._get_value('CERTIFICADO', 'lifespan')
-        ws[f'C{current_row}'] = self._get_value('CONTRATO', 'lifespan')
-        ws[f'H{current_row}'] = life
+        # Only show lifespan in FICHA column (D). If FICHA missing, fallback to CERTIFICADO or CONTRATO
+        contr_life = self._get_value('CONTRATO', 'lifespan')
+        ficha_life = self._get_value('FICHA', 'lifespan')
+        chosen = ficha_life or life or contr_life
+        # Write chosen lifespan into CONTRATO (C), FICHA (D) and CERTIFICADO (H)
+        ws[f'C{current_row}'] = chosen
+        ws[f'D{current_row}'] = chosen
+        ws[f'H{current_row}'] = chosen
         current_row += 1
         
         # Sell price
@@ -554,6 +557,14 @@ class MatrixGenerator:
         ws[f'F{current_row}'] = self._get_value('FACTURA', 'isolation_type')
         ws[f'D{current_row}'] = self._get_value('FICHA', 'isolation_type')
         ws[f'E{current_row}'] = self._get_value('DECLARACION', 'isolation_type')
+        current_row += 1
+
+        # Audit: indicate if the isolation type was inferred by brand
+        ws[f'B{current_row}'] = 'Type inferred by brand'
+        ws[f'D{current_row}'] = self._format_inferred_flag(self._get_value('FICHA', 'isolation_inferred_by_brand'))
+        ws[f'E{current_row}'] = self._format_inferred_flag(self._get_value('DECLARACION', 'isolation_inferred_by_brand'))
+        ws[f'F{current_row}'] = self._format_inferred_flag(self._get_value('FACTURA', 'isolation_inferred_by_brand'))
+        ws[f'H{current_row}'] = self._format_inferred_flag(self._get_value('CERTIFICADO', 'isolation_inferred_by_brand'))
         current_row += 1
 
         # Isolation Thickness
@@ -777,6 +788,23 @@ class MatrixGenerator:
                 return entero
 
         return s
+
+    def _format_inferred_flag(self, v: Any) -> str:
+        """Format the isolation_inferred_by_brand value for Excel output.
+
+        Returns 'INFERRED' when truthy, otherwise empty string.
+        """
+        if v is None:
+            return ""
+        # _get_value returns strings, so handle common truthy representations
+        if isinstance(v, bool):
+            return "INFERRED" if v else ""
+        s = str(v).strip()
+        if not s:
+            return ""
+        if s.lower() in {"true", "1", "yes", "inferred"}:
+            return "INFERRED"
+        return ""
 
     def _is_valid_cell_value(self, v: Any, min_len: int = 2) -> bool:
         if v is None:

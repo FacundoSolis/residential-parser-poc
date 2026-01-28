@@ -164,3 +164,29 @@ class BaseDocumentParser:
         text = "\n".join(lines)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
+
+    def _detect_isolation_type(self, text: str):
+        """Detect isolation type (SOPLADO or ROLLO) and whether it was inferred by brand.
+
+        Returns a tuple `(type_str, inferred_by_brand)` where `type_str` is the
+        normalized type or "NOT FOUND" and `inferred_by_brand` is a bool.
+        """
+        t = (text or "").replace('-', ' ')
+        # 1) explicit "tipo Soplado/Rollo"
+        m = re.search(r"tipo\s+(soplado|rollo)", t, re.IGNORECASE)
+        if m:
+            return m.group(1).upper(), False
+
+        # 2) standalone words
+        m = re.search(r"\b(soplado|rollo)\b", t, re.IGNORECASE)
+        if m:
+            return m.group(1).upper(), False
+
+        # 3) brand/product heuristics (fallbacks) - map known brands to a likely type
+        up = t.upper()
+        if 'URSA' in up:
+            return 'SOPLADO', True
+        if 'ISOVER' in up or 'ISOLENE' in up or 'SAINT GOBAIN'.upper() in up:
+            return 'SOPLADO', True
+
+        return 'NOT FOUND', False

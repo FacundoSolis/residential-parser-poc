@@ -14,6 +14,9 @@ class FacturaParser(BaseDocumentParser):
         """Extract all fields from Factura"""
         self.extract_text()
         
+        # detect isolation type and whether it was inferred by brand
+        isolation_type, isolation_inferred = self._detect_isolation_type(self.text)
+
         result = {
             'document_type': 'FACTURA',
             'invoice_number': self._extract_invoice_number(),
@@ -30,7 +33,8 @@ class FacturaParser(BaseDocumentParser):
             'installer_name': self._extract_installer_name(),
             'installer_address': self._extract_installer_address(),
             'installer_cif': self._extract_installer_cif(),
-            'isolation_type': self._extract_isolation_type(),
+            'isolation_type': isolation_type,
+            'isolation_inferred_by_brand': isolation_inferred,
             'isolation_thickness': self._extract_isolation_thickness(),
             's': self._extract_s(),
         }
@@ -286,23 +290,8 @@ class FacturaParser(BaseDocumentParser):
         return "NOT FOUND"
     
     def _extract_isolation_type(self) -> str:
-        """Extract isolation type: return only SOPLADO or ROLLO (or NOT FOUND)."""
-        t = self.text or ""
-        # Prefer explicit "tipo Soplado/Rollo"
-        m = re.search(r'tipo\s+(Soplado|Rollo)', t, re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-
-        # Sometimes the word appears standalone
-        m = re.search(r'\b(Soplado|Rollo)\b', t, re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-
-        # Fallback: common brand URSA implies soplado in our dataset
-        if 'URSA' in t.upper():
-            return 'SOPLADO'
-
-        return "NOT FOUND"
+        """Extract isolation type using unified helper from BaseDocumentParser."""
+        return self._detect_isolation_type(self.text)
     
     def _extract_isolation_thickness(self) -> str:
         """Extract isolation thickness in mm"""
