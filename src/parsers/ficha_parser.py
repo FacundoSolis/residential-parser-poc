@@ -58,7 +58,10 @@ class FichaParser(BaseDocumentParser):
             r'(?:propietario|titular|dueño)[:\s]*([^\n\r]{10,50})',
             r'(?:nombre|name)[:\s]*([^\n\r]{10,50})',
         ]
-        return self._find_first_pattern(text, patterns)
+        name = self._find_first_pattern(text, patterns)
+        if name and "BONO SOCIAL" not in name.upper() and "PERCEPTORES" not in name.upper():
+            return name
+        return "NOT FOUND"
 
     def _extract_homeowner_address(self, text: str) -> str:
         """Extract homeowner address from ficha"""

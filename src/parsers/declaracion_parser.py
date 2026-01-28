@@ -182,7 +182,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
+            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper() and "BONO SOCIAL" not in name.upper() and "PERCEPTORES" not in name.upper():
                 return name
 
         # 2) Titular / Solicitante / Beneficiario
@@ -193,7 +193,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
+            if 2 <= len(name.split()) <= 8 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper() and "BONO SOCIAL" not in name.upper() and "PERCEPTORES" not in name.upper():
                 return name
 
         # 3) Don/Doña/D.
@@ -204,7 +204,7 @@ class DeclaracionParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 10 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper():
+            if 2 <= len(name.split()) <= 10 and "PROPIETARIO INICIAL DEL AHORRO" not in name.upper() and "BONO SOCIAL" not in name.upper() and "PERCEPTORES" not in name.upper():
                 return name
 
         return "NOT FOUND"

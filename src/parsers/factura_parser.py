@@ -81,7 +81,8 @@ class FacturaParser(BaseDocumentParser):
             if match:
                 name = match.group(1).strip()
                 name = re.sub(r'\s+(CL|AV|C/|CALLE|PZ|PLAZA).*', '', name, flags=re.IGNORECASE)
-                return name.strip()
+                if "BONO SOCIAL" not in name.upper() and "PERCEPTORES" not in name.upper():
+                    return name.strip()
         
         return "NOT FOUND"
     
@@ -285,39 +286,22 @@ class FacturaParser(BaseDocumentParser):
         return "NOT FOUND"
     
     def _extract_isolation_type(self) -> str:
-        """Extract isolation type/material (solo nombre, sin saltos de línea ni números)"""
-        # First, try to find the type directly
-        type_match = re.search(r'tipo\s+(Soplado|Rollo)', self.text, re.IGNORECASE)
-        if type_match:
-            return type_match.group(1).upper()
-        
-        # Fallback to product name
-        patterns = [
-            (r'URSA\s+[A-Z0-9\-]+', 0),
-            (r'ROCKWOOL\s+[A-Z0-9\-]+', 0),
-            (r'KNAUF\s+[A-Z0-9\-]+', 0),
-            (r'ISOVER\s+[A-Z0-9\-]+', 0),
-            (r'producto[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
-            (r'aislamiento\s+térmico\s+de\s+([A-Z][A-Z0-9\s\-]+)', 1),
-            (r'aislamiento\s+térmico[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
-            (r'material[:\s]*([A-Z][A-Z0-9\s\-]+)', 1),
-        ]
-        for pattern, group_idx in patterns:
-            match = re.search(pattern, self.text, re.IGNORECASE)
-            if match:
-                product = match.group(group_idx).strip()
-                # Elimina saltos de línea y todo lo que venga después
-                product = product.split('\n')[0].strip()
-                # Elimina números al final (como superficie)
-                product = re.sub(r'\s*\d+$', '', product).strip()
-                # Filtrar palabras irrelevantes
-                if not any(word in product.upper() for word in ['INSTALACION', 'TRABAJOS', 'SUBTOTAL', 'IVA', 'PERMITE', 'DE']):
-                    # Evitar frases largas
-                    product = re.split(r'\s+(PERMITE|DE|Y|EN|CON)\b', product, 1)[0].strip()
-                    # If URSA, assume SOPLADO
-                    if 'URSA' in product.upper():
-                        return 'SOPLADO'
-                    return product
+        """Extract isolation type: return only SOPLADO or ROLLO (or NOT FOUND)."""
+        t = self.text or ""
+        # Prefer explicit "tipo Soplado/Rollo"
+        m = re.search(r'tipo\s+(Soplado|Rollo)', t, re.IGNORECASE)
+        if m:
+            return m.group(1).upper()
+
+        # Sometimes the word appears standalone
+        m = re.search(r'\b(Soplado|Rollo)\b', t, re.IGNORECASE)
+        if m:
+            return m.group(1).upper()
+
+        # Fallback: common brand URSA implies soplado in our dataset
+        if 'URSA' in t.upper():
+            return 'SOPLADO'
+
         return "NOT FOUND"
     
     def _extract_isolation_thickness(self) -> str:

@@ -199,6 +199,51 @@ class MatrixGenerator:
                     'document_type': doc_type,
                     'error': str(e)
                 }
+
+        # Post-process parsed data: if CONTRATO lacks valid name/DNI, copy from DECLARACION/FACTURA/DNI
+        try:
+            contr = self.parsed_data.get('CONTRATO')
+            if isinstance(contr, dict):
+                name = (contr.get('homeowner_name') or '').strip()
+                dni = (contr.get('homeowner_dni') or '').strip()
+
+                def is_missing(x: str) -> bool:
+                    if not x or x == 'NOT FOUND':
+                        return True
+                    ux = x.strip().upper()
+                    if ux in {"C", "CL", "CALLE", "AV", "AVD", "S/N"}:
+                        return True
+                    if 'SEGUNDO APELLIDO' in ux or 'PRIMER APELLIDO' in ux or 'APELLIDO' in ux:
+                        return True
+                    return False
+
+                # Fill name from DECLARACION -> FACTURA -> FICHA -> CALCULO
+                if is_missing(name):
+                    for src in ['DECLARACION', 'FACTURA', 'FICHA', 'CALCULO', 'DNI']:
+                        srcdoc = self.parsed_data.get(src)
+                        if isinstance(srcdoc, dict):
+                            candidate = (srcdoc.get('homeowner_name') or srcdoc.get('client_name') or '').strip()
+                            if candidate and candidate != 'NOT FOUND':
+                                ux = candidate.upper()
+                                if 'BONO SOCIAL' in ux or 'PERCEPTORES' in ux:
+                                    continue
+                                contr['homeowner_name'] = candidate
+                                break
+
+                # Fill DNI from DNI -> DECLARACION -> FACTURA
+                if is_missing(dni):
+                    for src in ['DNI', 'DECLARACION', 'FACTURA', 'FICHA']:
+                        srcdoc = self.parsed_data.get(src)
+                        if isinstance(srcdoc, dict):
+                            candidate = (srcdoc.get('homeowner_dni') or srcdoc.get('dni_number') or '').strip()
+                            if candidate and candidate != 'NOT FOUND':
+                                contr['homeowner_dni'] = candidate
+                                break
+
+                # Save back
+                self.parsed_data['CONTRATO'] = contr
+        except Exception:
+            pass
     
     def generate_excel(self, output_path: str, project_name: str = "Project"):
         """Generate Excel file with correspondence matrix - matches Travis's template"""
@@ -571,28 +616,32 @@ class MatrixGenerator:
                 ws[f'C{current_row}'] = f"Signature error: {str(e)[:40]}"
                 print(f"   ❌ Error firma CONTRATO: {e}")
 
-            # ✅ CAMBIO 4: Extraer e insertar firma de DECLARACION (columna E)
-            declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
-            if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
-                img_path_decl = str(tmp_dir / "declaracion_firma_cedente.png")
+            # ✅ CAMBIO 4: Insertar la firma del CONTRATO también en DECLARACION (columna E)
+            # Si la firma del CONTRATO fue extraída correctamente, reutilízala en la DECLARACION
+            img_path_contrato = str(tmp_dir / "contrato_firma_cedente.png")
+            if os.path.exists(img_path_contrato) and os.path.getsize(img_path_contrato) > 0:
                 try:
-                    self._extract_declaracion_signature(declaracion_pdf, img_path_decl)
-                    # Verificar que la imagen se creó correctamente
-                    if os.path.exists(img_path_decl) and os.path.getsize(img_path_decl) > 0:
-                        self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
-                        print(f"   ✅ Firma DECLARACION insertada en E{current_row}")
-                        # ❌ NO PONGAS: ws[f'E{current_row}'] = ""
-                    else:
-                        # Fallback: intentar usar la firma del CONTRATO
-                        img_path_contrato = str(tmp_dir / "contrato_firma_cedente.png")
-                        if os.path.exists(img_path_contrato) and os.path.getsize(img_path_contrato) > 0:
-                            self._insert_image(ws, f"E{current_row}", img_path_contrato, width_px=260)
-                            print(f"   ✅ Firma CONTRATO reutilizada en E{current_row}")
-                        else:
-                            ws[f'E{current_row}'] = "Signature not found"
+                    self._insert_image(ws, f"E{current_row}", img_path_contrato, width_px=260)
+                    print(f"   ✅ Firma CONTRATO reutilizada en E{current_row}")
                 except Exception as e:
                     ws[f'E{current_row}'] = f"Signature error: {str(e)[:40]}"
-                    print(f"   ❌ Error firma DECLARACION: {e}")
+                    print(f"   ❌ Error al insertar firma CONTRATO en DECLARACION: {e}")
+            else:
+                # Si no existe la firma del CONTRATO, intentar extraer la de la DECLARACION
+                declaracion_pdf = str(self.file_mapping.get("DECLARACION", ""))
+                if declaracion_pdf.lower().endswith(".pdf") and os.path.exists(declaracion_pdf):
+                    img_path_decl = str(tmp_dir / "declaracion_firma_cedente.png")
+                    try:
+                        self._extract_declaracion_signature(declaracion_pdf, img_path_decl)
+                        # Verificar que la imagen se creó correctamente
+                        if os.path.exists(img_path_decl) and os.path.getsize(img_path_decl) > 0:
+                            self._insert_image(ws, f"E{current_row}", img_path_decl, width_px=260)
+                            print(f"   ✅ Firma DECLARACION insertada en E{current_row}")
+                        else:
+                            ws[f'E{current_row}'] = "Signature not found"
+                    except Exception as e:
+                        ws[f'E{current_row}'] = f"Signature error: {str(e)[:40]}"
+                        print(f"   ❌ Error firma DECLARACION: {e}")
 
         current_row += 1
                 
@@ -761,6 +810,8 @@ class MatrixGenerator:
             else:
                 return False
         if s.upper().endswith(" MANEC"):
+            return False
+        if "SEGUNDO APELLIDO" in s.upper():
             return False
         return True
 

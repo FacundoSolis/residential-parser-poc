@@ -421,6 +421,11 @@ class ContratoParser(BaseDocumentParser):
         txt = getattr(self, "_cedente_txt", "") or self.text
         txt = self._normalize(txt)
 
+        bad_words = re.compile(
+            r"\b(segundo apellido|haya|debido|cantidad|instalador|por\s+cuanto|notificaciones|cl[aá]usula|presente|bono|social|perceptores)\b",
+            re.IGNORECASE,
+        )
+
         # ✅ extractor directo “De una parte, <NOMBRE>, mayor de edad, con DNI”
         m = re.search(
             r"De\s+una\s+parte,?\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{6,80}?)\s*,\s*mayor\s+de\s+edad,\s*con\s+DNI",
@@ -429,7 +434,7 @@ class ContratoParser(BaseDocumentParser):
         )
         if m:
             name = re.sub(r"\s+", " ", m.group(1)).strip()
-            if 2 <= len(name.split()) <= 6:
+            if 2 <= len(name.split()) <= 6 and not bad_words.search(name):
                 return name
 
         patterns = [
@@ -437,11 +442,6 @@ class ContratoParser(BaseDocumentParser):
             r"CEDENTE[:\s]*D\.?\s*(?:ÑA|NA|N)?\.?\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{6,60}?)\s*,\s*mayor\s+de\s+edad",
             r"D\.?\s*(?:ÑA|NA|N)?\.?\s*([A-ZÑÁÉÍÓÚ][A-ZÑÁÉÍÓÚ\s]{6,60}?)\s*,\s*mayor\s+de\s+edad,\s*con\s+DNI",
         ]
-
-        bad_words = re.compile(
-            r"\b(haya|debido|cantidad|instalador|por\s+cuanto|notificaciones|cl[aá]usula|presente)\b",
-            re.IGNORECASE,
-        )
 
         for p in patterns:
             m = re.search(p, txt, re.IGNORECASE | re.DOTALL)
